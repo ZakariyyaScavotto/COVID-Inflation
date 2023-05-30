@@ -4,6 +4,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, mean_squared_error
+from sklearn.preprocessing import StandardScaler
 
 
 def readEconData(filename):
@@ -16,6 +17,9 @@ def readEconData(filename):
 
 def makeTrainTest(econData):
     # Split the data into training and testing (80/20) while keeping time-order
+    scaler = StandardScaler()
+    econData = pd.DataFrame(scaler.fit_transform(econData), columns=econData.columns)
+    # print(econData.head())
     trainCutoff = int(econData.shape[0] * 0.8)
     trainDf, testDf = econData.iloc[:trainCutoff], econData.iloc[trainCutoff:]
     xTrain, yTrain = trainDf.loc[:, trainDf.columns != "AnnualizedMoM-CPI-Inflation"], trainDf.loc[:, trainDf.columns == "AnnualizedMoM-CPI-Inflation"]
