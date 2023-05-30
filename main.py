@@ -14,7 +14,7 @@ def readEconData(filename):
 
 def makeTrainLR(econData):
     myLR = LinearRegression()
-    # Split the data into training and testing (80/20)
+    # Split the data into training and testing (80/20) while keeping time-order
     trainCutoff = int(econData.shape[0] * 0.8)
     trainDf, testDf = econData.iloc[:trainCutoff], econData.iloc[trainCutoff:]
     xTrain, yTrain = trainDf.loc[:, trainDf.columns != "AnnualizedMoM-CPI-Inflation"], trainDf.loc[:, trainDf.columns == "AnnualizedMoM-CPI-Inflation"]
@@ -24,6 +24,7 @@ def makeTrainLR(econData):
     return xTest, yTest, myLR
 
 def evaluateLR(xTest, yTest, myLR):
+    # Evaluate the LR by getting predictions on xTest, then calculating the MSE and R^2
     predictions = myLR.predict(xTest)
     print("MSE: ", mean_squared_error(yTest, predictions))
     print("R^2: ", r2_score(yTest, predictions))
