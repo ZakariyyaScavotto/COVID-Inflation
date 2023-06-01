@@ -6,11 +6,10 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, mean_squared_error
 from sklearn.preprocessing import StandardScaler
 
-
 def readEconData(filename):
     df = pd.read_excel(filename)
     # Last number in HousingPriceInd missing so dropping that row
-    df.dropna(subset=["HousingPriceInd"], inplace=True)
+    df.dropna(subset=["HPI%Change"], inplace=True)
     df.drop("Date", axis=1, inplace=True)
     # print(df.isna().sum())
     return df
@@ -52,10 +51,11 @@ def evaluateRF(xTest, yTest, myRF):
     print("RF MSE: ", mean_squared_error(yTest, predictions))
     print("RF R^2: ", r2_score(yTest, predictions))
 
-
 def main():
     # Read in the full econ data file
     econData = readEconData("Data\EconomicData\ALLECONDATA.xlsx")
+    correlationMatrix = econData.corr()
+    correlationMatrix.to_excel("Data\CorrelationMatrix.xlsx")
     # Try basic LR on the econ data
     xTest, yTest, firstLR = trainLR(econData)
     evaluateLR(xTest, yTest, firstLR)
@@ -63,7 +63,6 @@ def main():
     xTest, yTest, firstRF = trainRF(econData)
     evaluateRF(xTest, yTest, firstRF)
     print("Program Done")
-
 
 if __name__ == "__main__":
     main()
