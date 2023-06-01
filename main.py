@@ -6,6 +6,12 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, mean_squared_error
 from sklearn.preprocessing import StandardScaler
 
+# import to hide the annoying warnings about numba.jit when importing shap library
+import warnings
+warnings.filterwarnings("ignore", message=".*The 'nopython' keyword.*")
+import shap
+import matplotlib.pyplot as plt
+
 def readEconData(filename):
     df = pd.read_excel(filename)
     # Last number in HousingPriceInd missing so dropping that row
@@ -30,6 +36,14 @@ def trainLR(econData):
     xTrain, yTrain, xTest, yTest = makeTrainTest(econData)
     myLR.fit(xTrain, yTrain)
     print("Finished training LR")
+    # reference: https://towardsdatascience.com/explainable-ai-xai-with-shap-regression-problem-b2d63fdca670
+    explainer = shap.explainers.Linear(myLR, xTrain)
+    shap_values = explainer.shap_values(xTrain)
+    shap.summary_plot(shap_values, xTrain, feature_names=xTrain.columns, plot_type="bar", show=False)
+    plt.title("Feature Importance for Linear Regression")
+    plt.gcf().canvas.manager.set_window_title("Feature Importance for Linear Regression")
+    plt.gcf().set_size_inches(10,6)
+    plt.show()
     return xTest, yTest, myLR
 
 def evaluateLR(xTest, yTest, myLR):
@@ -37,12 +51,21 @@ def evaluateLR(xTest, yTest, myLR):
     predictions = myLR.predict(xTest)
     print("LR MSE: ", mean_squared_error(yTest, predictions))
     print("LR R^2: ", r2_score(yTest, predictions))
+    print("LR Adjusted R^2: ", 1 - (1-r2_score(yTest, predictions)) * (len(yTest)-1)/(len(yTest)-xTest.shape[1]-1))
 
 def trainRF(econData):
     myRF = RandomForestRegressor()
     xTrain, yTrain, xTest, yTest = makeTrainTest(econData)
     myRF.fit(xTrain, yTrain.values.ravel())
     print("Finished training RF")
+    # reference: https://towardsdatascience.com/explainable-ai-xai-with-shap-regression-problem-b2d63fdca670
+    explainer = shap.TreeExplainer(myRF)
+    shap_values = explainer.shap_values(xTrain)
+    shap.summary_plot(shap_values, xTrain, feature_names=xTrain.columns, plot_type="bar", show=False)
+    plt.title("Feature Importance for Random Forest")
+    plt.gcf().canvas.manager.set_window_title("Feature Importance for Random Forest")
+    plt.gcf().set_size_inches(10,6)
+    plt.show()
     return xTest, yTest, myRF
 
 def evaluateRF(xTest, yTest, myRF):
@@ -50,6 +73,7 @@ def evaluateRF(xTest, yTest, myRF):
     predictions = myRF.predict(xTest)
     print("RF MSE: ", mean_squared_error(yTest, predictions))
     print("RF R^2: ", r2_score(yTest, predictions))
+    print("RF Adjusted R^2: ", 1 - (1-r2_score(yTest, predictions)) * (len(yTest)-1)/(len(yTest)-xTest.shape[1]-1))
 
 def main():
     # Read in the full econ data file
