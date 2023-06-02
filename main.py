@@ -11,6 +11,10 @@ import warnings
 warnings.filterwarnings("ignore", message=".*The 'nopython' keyword.*")
 import shap
 import matplotlib.pyplot as plt
+from tensorflow import keras
+from tensorflow.keras import layers
+from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.models import load_model
 
 def readEconData(filename):
     df = pd.read_excel(filename)
@@ -75,6 +79,41 @@ def evaluateRF(xTest, yTest, myRF):
     print("RF R^2: ", r2_score(yTest, predictions))
     print("RF Adjusted R^2: ", 1 - (1-r2_score(yTest, predictions)) * (len(yTest)-1)/(len(yTest)-xTest.shape[1]-1))
 
+def trainNN(econData):
+    myNN = keras.Sequential([
+    layers.BatchNormalization(),
+    layers.Dense(300, activation='relu', input_shape=[15]),
+    layers.BatchNormalization(),
+    layers.Dense(150, activation='relu'),
+    layers.BatchNormalization(),
+    layers.Dense(75, activation='relu'),
+    layers.BatchNormalization(),
+    layers.Dense(1),
+    ])
+
+    myNN.compile(
+    optimizer='adam',
+    loss='mse',
+    )   
+    es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
+    xTrain, yTrain, xTest, yTest = makeTrainTest(econData)
+    history = myNN.fit(
+    xTrain, yTrain,
+    validation_data=(xTest, yTest),
+    batch_size=100,
+    epochs=100,
+    verbose=1, # decided to make verbose to follow the training, feel free to set to 0
+    callbacks=[es]
+    )
+    print("Finished training NN")
+    return xTest, yTest, myNN
+
+def evaluateNN(xTest, yTest, myNN):
+    test_loss = myNN.evaluate(xTest, yTest, verbose=0)
+    # print(myNN.metrics_names)
+    print("NN Loss: ", test_loss)
+
+
 def main():
     # Read in the full econ data file
     econData = readEconData("Data\EconomicData\ALLECONDATA.xlsx")
@@ -86,6 +125,9 @@ def main():
     # Try basic RF on the econ data
     xTest, yTest, firstRF = trainRF(econData)
     evaluateRF(xTest, yTest, firstRF)
+    # Try basic NN on the econ data
+    xTest, yTest, firstNN = trainNN(econData)
+    evaluateNN(xTest, yTest, firstNN)
     print("Program Done")
 
 if __name__ == "__main__":
