@@ -1,0 +1,20 @@
+Note: part of justifications to remove is there being on partial autocorrelation (PAC), this is because
+    when the PAC doesn't pass the threshold for any lags, it is an indicator that the timeseries is likely random
+    (white noise), meaning that it won't do the models any good
+
+2008-9 dummy variable: ignore because it was from a random test, AnnualizedMoM-CPI-Inflation: ignore because it is the target
+Banana price: no PAC, between that and its lack of relative importance per the BLS good to remove?
+Bread price: very weak at lag 1, could potentially remove?
+Chicken price: some PAC at lag 1
+Egg price: no PAC, could be good to remove
+Electricity: some at lags 1, 4, (8, 12?)
+Gas: 1, 2
+Ground beef: practically no PAC, may be removed
+Housing start: 1
+HPI: 1, 2, 3
+IndPro: 1, 2 are weak, weary to remove due to economic significance
+MichInflationExpect: Very strong at 1
+Milk: moderate at 1
+Retnal price: strong at 1, moderate at 2, 7
+Unemployment rate: no PAC, weary to remove due to potential economic sig when COVID comes around
+Utilities: 1
