@@ -44,6 +44,16 @@ def makeTrainTest(): # Train test but with breaking up between pre-2020 and 2020
     post2020xTest, post2020yTest = post2020TestDf.loc[:, post2020TestDf.columns != "AnnualizedMoM-CPI-Inflation"], post2020TestDf.loc[:, post2020TestDf.columns == "AnnualizedMoM-CPI-Inflation"]
     return pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest
 
+def plotPredictions(xTest, yTest, model, modelName):
+    # Plot the predictions of the model on the xTest data
+    predictions = model.predict(xTest)
+    plt.plot(predictions, label="Predictions")
+    plt.plot(yTest.values, label="Actual")
+    plt.legend()
+    plt.title("Predictions vs Actual for "+modelName)
+    plt.gcf().canvas.manager.set_window_title("Predictions vs Actual for "+modelName)
+    plt.show()
+
 def trainLR():
     myLR = LinearRegression()
     pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
@@ -67,6 +77,7 @@ def evaluateLR(xTest, yTest, myLR):
     print("LR MSE: ", mean_squared_error(yTest, predictions))
     print("LR R^2: ", r2_score(yTest, predictions))
     print("LR Adjusted R^2: ", 1 - (1-r2_score(yTest, predictions)) * (len(yTest)-1)/(len(yTest)-xTest.shape[1]-1))
+    plotPredictions(xTest, yTest, myLR, "Linear Regression")
 
 def trainEvalRF():
     myRF = RandomForestRegressor(warm_start=True)
@@ -138,14 +149,10 @@ def trainNN():
 def evaluateNN(xTest, yTest, myNN):
     test_loss = myNN.evaluate(xTest, yTest, verbose=0)
     # print(myNN.metrics_names)
-    print("NN Loss: ", test_loss)
     predictions = myNN.predict(xTest)
+    print("NN Loss: ", test_loss)
     print("NN MSE: ", mean_squared_error(yTest, predictions))
-    plt.plot(range(len(yTest)), yTest, color='blue')
-    plt.plot(range(len(predictions)), predictions, color='red')
-    plt.legend(['Actual', 'Predicted'], loc='upper left')
-    plt.title("NN Predictions vs Actual")
-    plt.show()
+    plotPredictions(xTest, yTest, myNN, "Neural Network")
 
 def trainEvalLasso():
     myLasso = Lasso(alpha = 0.5, warm_start=True)
@@ -168,10 +175,13 @@ def evaluateLasso(xTest, yTest, myLasso, pre):
         print("Pre2020 Lasso MSE: ", mean_squared_error(yTest, predictions))
         print("Pre2020 Lasso R^2: ", r2_score(yTest, predictions))
         print("Pre2020 Lasso Adjusted R^2: ", 1 - (1-r2_score(yTest, predictions)) * (len(yTest)-1)/(len(yTest)-xTest.shape[1]-1))
+        plotPredictions(xTest, yTest, myLasso, "Lasso Pre 2020")
     else:
         print("Total Lasso MSE: ", mean_squared_error(yTest, predictions))
         print("Total Lasso R^2: ", r2_score(yTest, predictions))
         print("Total Lasso Adjusted R^2: ", 1 - (1-r2_score(yTest, predictions)) * (len(yTest)-1)/(len(yTest)-xTest.shape[1]-1))
+        plotPredictions(xTest, yTest, myLasso, "Lasso 2020->beyond")
+
 
 def main():
     # Try basic Lasso on the econ data
