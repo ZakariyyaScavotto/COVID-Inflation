@@ -82,12 +82,20 @@ def evaluateLR(xTest, yTest, myLR):
     print("LR R^2: ", r2_score(yTest, predictions))
     print("LR Adjusted R^2: ", 1 - (1-r2_score(yTest, predictions)) * (len(yTest)-1)/(len(yTest)-xTest.shape[1]-1))
 
-def trainRF():
-    myRF = RandomForestRegressor()
-    xTrain, yTrain, xTest, yTest = makeTrainTestOld()
-    myRF.fit(xTrain, yTrain.values.ravel())
-    print("Finished training RF")
+def trainEvalRF():
+    myRF = RandomForestRegressor(warm_start=True)
+    pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
+    myRF.fit(pre2020xTrain, pre2020yTrain.values.ravel())
+    print("Finished training RF with pre2020 data")
+    evaluateRF(pre2020xTest, pre2020yTest, myRF)
+    print("Now training RF with 2020->beyond data")
+    myRF.n_estimators += 100
+    myRF.fit(post2020xTrain, post2020yTrain.values.ravel())
+    print("Finished training RF with post2020 data")
+    evaluateRF(post2020xTest, post2020yTest, myRF)
     # reference: https://towardsdatascience.com/explainable-ai-xai-with-shap-regression-problem-b2d63fdca670
+    # combine the xTrains into one dataframe to get shap values
+    xTrain = pd.concat([pre2020xTrain, post2020xTrain])
     explainer = shap.TreeExplainer(myRF)
     shap_values = explainer.shap_values(xTrain)
     shap.summary_plot(shap_values, xTrain, feature_names=xTrain.columns, plot_type="bar", show=False)
@@ -95,7 +103,6 @@ def trainRF():
     plt.gcf().canvas.manager.set_window_title("Feature Importance for Random Forest")
     plt.gcf().set_size_inches(10,6)
     plt.show()
-    return xTest, yTest, myRF
 
 def evaluateRF(xTest, yTest, myRF):
     # Evaluate the RF by getting predictions on xTest, then calculating the MSE and R^2
@@ -186,8 +193,7 @@ def main():
     xTest, yTest, firstLR = trainLR()
     evaluateLR(xTest, yTest, firstLR)
     # Try basic RF on the econ data
-    xTest, yTest, firstRF = trainRF()
-    evaluateRF(xTest, yTest, firstRF)
+    trainEvalRF()
     # Try basic NN on the econ data
     xTest, yTest, firstNN = trainNN()
     evaluateNN(xTest, yTest, firstNN)
