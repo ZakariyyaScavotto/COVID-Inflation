@@ -42,8 +42,13 @@ def mainDatasetMaking():
     df = pd.merge(df, covidDf, how="outer")
     # Move the AnnualizedMoM-CPI-Inflation column to the end of the df for formatting purposes
     df = df[[c for c in df if c not in ["AnnualizedMoM-CPI-Inflation"]] + ["AnnualizedMoM-CPI-Inflation"]]
+    # Fill the nan values in the df with 0
+    df.fillna(0, inplace=True)
     # Save the df to a csv file
     df.to_excel("Data\ConstructedDataframes\ALLECONDATAwithLagsAndCOVIDData.xlsx", index=False)
+    # Save correlation matrix to excel file
+    corrMatrix = df.corr()
+    corrMatrix.to_excel("Data\ConstructedDataframes\CorrMatrix.xlsx")
     print("Done making and saving dataset")
 
 if __name__ == "__main__":

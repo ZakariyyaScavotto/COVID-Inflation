@@ -20,7 +20,7 @@ def readEconData(filename):
 
 def makeTrainTest(): # Train test but with breaking up between pre-2020 and 2020->beyond
     # Read econ data
-    econData = readEconData("Data\ConstructedDataframes\ALLECONDATAwithLags.xlsx")
+    econData = readEconData("Data\ConstructedDataframes\ALLECONDATAwithLagsAndCOVIDData.xlsx")
     # split into pre-2020 and 2020->beyond
     ind2020 = econData.query("Date == '2020-01-01'").index.values[0]
     pre2020EconData, post2020EconData = econData.iloc[:ind2020].copy(), econData.iloc[ind2020:].copy()
@@ -47,7 +47,7 @@ def makeTrainTest(): # Train test but with breaking up between pre-2020 and 2020
 def makeTrainTestOld():
     # Split the data into training and testing (80/20) while keeping time-order
     # Read econ data
-    econData = readEconData("Data\ConstructedDataframes\ALLECONDATAwithLags.xlsx")
+    econData = readEconData("Data\ConstructedDataframes\ALLECONDATAwithLagsAndCOVIDData.xlsx")
     scaler = StandardScaler()
     if "Date" in econData.columns:
         econData.drop("Date", axis=1, inplace=True)
