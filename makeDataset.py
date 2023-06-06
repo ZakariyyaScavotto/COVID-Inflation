@@ -12,6 +12,10 @@ def readEconData(filename):
     df.dropna(subset=["HPI%Change"], inplace=True)
     return df
 
+def readCovidData(filename):
+    df = pd.read_excel(filename)
+    return df
+
 def makeLags(df, columnName, lags):
     for lag in lags:
         df[columnName + "Lag" + str(lag)] = df[columnName].shift(lag)
@@ -19,7 +23,7 @@ def makeLags(df, columnName, lags):
     return df
 
 def mainDatasetMaking():
-    # Read in data
+    # Read in econ data
     df = readEconData("Data\EconomicData\ALLECONDATA.xlsx")
     # Drop the BananaPrice%Change, BreadPrice%Change, EggPrice%Change, and GroundBeefPrice%Change columns from the df
     # For full reasoning see the partialAutoCorrelationPlots folder, but in sumnmary doing partial autocorrelations on
@@ -30,12 +34,16 @@ def mainDatasetMaking():
                 "UtilityPrice%Change": [1]}
     for colName, lags in lagsDict.items():
         df = makeLags(df, colName, lags)
-    # Move the AnnualizedMoM-CPI-Inflation column to the end of the df for formatting purposes
-    df = df[[c for c in df if c not in ["AnnualizedMoM-CPI-Inflation"]] + ["AnnualizedMoM-CPI-Inflation"]]
     # Drop all rows with nan values from the df
     df.dropna(inplace=True)
+    # Read in Covid data
+    covidDf = readCovidData("Data\CovidData\ALLMONTHLYCOVIDDATA.xlsx")
+    # Merge the two dataframes on the Date column
+    df = pd.merge(df, covidDf, how="outer")
+    # Move the AnnualizedMoM-CPI-Inflation column to the end of the df for formatting purposes
+    df = df[[c for c in df if c not in ["AnnualizedMoM-CPI-Inflation"]] + ["AnnualizedMoM-CPI-Inflation"]]
     # Save the df to a csv file
-    df.to_excel("Data\ConstructedDataframes\ALLECONDATAwithLags.xlsx", index=False)
+    df.to_excel("Data\ConstructedDataframes\ALLECONDATAwithLagsAndCOVIDData.xlsx", index=False)
     print("Done making and saving dataset")
 
 if __name__ == "__main__":
