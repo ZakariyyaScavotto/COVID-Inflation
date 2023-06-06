@@ -44,20 +44,6 @@ def makeTrainTest(): # Train test but with breaking up between pre-2020 and 2020
     post2020xTest, post2020yTest = post2020TestDf.loc[:, post2020TestDf.columns != "AnnualizedMoM-CPI-Inflation"], post2020TestDf.loc[:, post2020TestDf.columns == "AnnualizedMoM-CPI-Inflation"]
     return pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest
 
-def makeTrainTestOld():
-    # Split the data into training and testing (80/20) while keeping time-order
-    # Read econ data
-    econData = readEconData("Data\ConstructedDataframes\ALLECONDATAwithLagsAndCOVIDData.xlsx")
-    scaler = StandardScaler()
-    if "Date" in econData.columns:
-        econData.drop("Date", axis=1, inplace=True)
-    econData = pd.DataFrame(scaler.fit_transform(econData), columns=econData.columns)
-    trainCutoff = int(econData.shape[0] * 0.8) 
-    trainDf, testDf = econData.iloc[:trainCutoff], econData.iloc[trainCutoff:]
-    xTrain, yTrain = trainDf.loc[:, trainDf.columns != "AnnualizedMoM-CPI-Inflation"], trainDf.loc[:, trainDf.columns == "AnnualizedMoM-CPI-Inflation"]
-    xTest, yTest = testDf.loc[:, testDf.columns != "AnnualizedMoM-CPI-Inflation"], testDf.loc[:, trainDf.columns == "AnnualizedMoM-CPI-Inflation"]
-    return xTrain, yTrain, xTest, yTest
-
 def trainLR():
     myLR = LinearRegression()
     pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
