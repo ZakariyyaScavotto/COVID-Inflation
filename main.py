@@ -127,7 +127,8 @@ def trainNN():
     loss='mse',
     )   
     es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
-    xTrain, yTrain, xTest, yTest = makeTrainTestOld()
+    pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
+    xTrain, xTest, yTrain, yTest = pd.concat([pre2020xTrain, post2020xTrain]), pd.concat([pre2020xTest, post2020xTest]), pd.concat([pre2020yTrain, post2020yTrain]), pd.concat([pre2020yTest, post2020yTest])
     history = myNN.fit(
     xTrain, yTrain,
     validation_data=(xTest, yTest),
