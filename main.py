@@ -14,13 +14,14 @@ from tensorflow import keras
 from tensorflow.keras import layers
 from tensorflow.keras.callbacks import EarlyStopping
 from sklearn.linear_model import Lasso
+from regressors import stats, plots
 
 def readEconData(filename):
     return pd.read_excel(filename)
 
 def makeTrainTest(): # Train test but with breaking up between pre-2020 and 2020->beyond
     # Read econ data
-    econData = readEconData("Data\ConstructedDataframes\ALLECONDATAwithLagsAndCOVIDData.xlsx")
+    econData = readEconData("Data\ConstructedDataframes\SigLagsAndMichAndCOVID.xlsx")
     # split into pre-2020 and 2020->beyond
     ind2020 = econData.query("Date == '2020-01-01'").index.values[0]
     pre2020EconData, post2020EconData = econData.iloc[:ind2020].copy(), econData.iloc[ind2020:].copy()
@@ -69,6 +70,9 @@ def trainLR():
     plt.gcf().canvas.manager.set_window_title("Feature Importance for Linear Regression")
     plt.gcf().set_size_inches(10,6)
     plt.show()
+    print("LR stats summary:")
+    printLRCoeffSig(xTrain, yTrain.values.tolist(), myLR, xTrain.columns)
+    plotLRResiduals(xTrain, yTrain.values.tolist(), myLR)
     return xTest, yTest, myLR
 
 def evaluateLR(xTest, yTest, myLR):
@@ -78,18 +82,23 @@ def evaluateLR(xTest, yTest, myLR):
     print("LR R^2: ", r2_score(yTest, predictions))
     print("LR Adjusted R^2: ", 1 - (1-r2_score(yTest, predictions)) * (len(yTest)-1)/(len(yTest)-xTest.shape[1]-1))
     plotPredictions(xTest, yTest, myLR, "Linear Regression")
+    
 
 def trainEvalRF():
     myRF = RandomForestRegressor(warm_start=True)
     pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
     myRF.fit(pre2020xTrain, pre2020yTrain.values.ravel())
     print("Finished training RF with pre2020 data")
+    plotPredictions(pre2020xTest, pre2020yTest, myRF, "Random Forest pre2020")
     evaluateRF(pre2020xTest, pre2020yTest, myRF)
     print("Now training RF with 2020->beyond data")
     myRF.n_estimators += 100
     myRF.fit(post2020xTrain, post2020yTrain.values.ravel())
     print("Finished training RF with post2020 data")
-    evaluateRF(post2020xTest, post2020yTest, myRF)
+    xTest = pd.concat([pre2020xTest, post2020xTest])
+    yTest = pd.concat([pre2020yTest, post2020yTest])
+    plotPredictions(xTest, yTest, myRF, "Random Forest Full Test Set")
+    evaluateRF(xTest, yTest, myRF)
     # reference: https://towardsdatascience.com/explainable-ai-xai-with-shap-regression-problem-b2d63fdca670
     # combine the xTrains into one dataframe to get shap values
     xTrain = pd.concat([pre2020xTrain, post2020xTrain])
@@ -111,7 +120,7 @@ def evaluateRF(xTest, yTest, myRF):
 def trainNN():
     myNN = keras.Sequential([
     layers.BatchNormalization(),
-    layers.Dense(300, activation='relu', input_shape=[15]),
+    layers.Dense(300, activation='relu', input_shape=[22]),
     layers.BatchNormalization(),
     layers.Dense(150, activation='relu'),
     layers.BatchNormalization(),
@@ -180,8 +189,23 @@ def evaluateLasso(xTest, yTest, myLasso, pre):
         print("Total Lasso MSE: ", mean_squared_error(yTest, predictions))
         print("Total Lasso R^2: ", r2_score(yTest, predictions))
         print("Total Lasso Adjusted R^2: ", 1 - (1-r2_score(yTest, predictions)) * (len(yTest)-1)/(len(yTest)-xTest.shape[1]-1))
-        plotPredictions(xTest, yTest, myLasso, "Lasso 2020->beyond")
+        plotPredictions(xTest, yTest, myLasso, "Lasso Full Test Set")
 
+def printLRCoeffSig(xTrain, yTrain, LR, xColumns):
+    yTrain = [arr[0] for arr in yTrain]
+    yTrain = np.array(yTrain)
+    # print("X shape: ", xTrain.shape)
+    # print("XCols shape: ", xColumns.shape)
+    LR.coef_ = LR.coef_[0]
+    LR.intercept_ = LR.intercept_[0]
+    # print(LR.coef_.shape)
+    # print(LR.intercept_.shape)
+    print(stats.summary(LR, xTrain, yTrain, xColumns))
+
+def plotLRResiduals(xTrain, yTrain, LR):
+    yTrain = [arr[0] for arr in yTrain]
+    yTrain = np.array(yTrain)
+    plots.plot_residuals(LR, xTrain, yTrain, r_type="standardized")
 
 def main():
     # Try basic Lasso on the econ data

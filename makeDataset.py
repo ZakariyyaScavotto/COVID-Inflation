@@ -26,16 +26,25 @@ def mainDatasetMaking():
     # Read in econ data
     df = readEconData("Data\EconomicData\ALLECONDATA.xlsx")
     # Drop the BananaPrice%Change, BreadPrice%Change, EggPrice%Change, and GroundBeefPrice%Change columns from the df
-    # For full reasoning see the partialAutoCorrelationPlots folder, but in sumnmary doing partial autocorrelations on
-    # these columns showed that these columns are likely white noise and do not add much value to the models
-    df.drop(["BananaPrice%Change", "BreadPrice%Change", "EggPrice%Change", "GroundBeefPrice%Change", "2008-9RecessionDummyVar"], axis=1, inplace=True)
-    lagsDict = {"ChickenPrice%Change": [1], "ElectricityPrice%Change": [1,4], "GasolinePrice%Change": [1,2], "HouseStart%Change": [1],
+    # For full reasoning see the partialAutoCorrelationPlots folder and the 6_7_23 update
+    originalRemove = ["BananaPrice%Change", "BreadPrice%Change", "EggPrice%Change", "GroundBeefPrice%Change", "2008-9RecessionDummyVar"]
+    nonSigRemove = ["BananaPrice%Change", "BreadPrice%Change", "EggPrice%Change", "GroundBeefPrice%Change", "2008-9RecessionDummyVar", 
+                    "UnemploymentRate%Change", "ChickenPrice%Change", "HouseStart%Change", "HPI%Change", "MichInflationExpectation", 
+                    "MilkPrice%Change", "UtilityPrice%Change", "2008-9RecessionDummyVar"]
+    nonSigMinusMichRemove = ["BananaPrice%Change", "BreadPrice%Change", "EggPrice%Change", "GroundBeefPrice%Change", "2008-9RecessionDummyVar", 
+                    "UnemploymentRate%Change", "ChickenPrice%Change", "HouseStart%Change", "HPI%Change",  
+                    "MilkPrice%Change", "UtilityPrice%Change", "2008-9RecessionDummyVar"]
+    df.drop(nonSigMinusMichRemove, axis=1, inplace=True)
+    originalLagsDict = {"ChickenPrice%Change": [1], "ElectricityPrice%Change": [1,4], "GasolinePrice%Change": [1,2], "HouseStart%Change": [1],
                 "HPI%Change": [1,2,3], "IndPro%Change": [1,2], "MichInflationExpectation": [1], "MilkPrice%Change":[1], "RentalPriceAvg%Change":[1,2,7],
                 "UtilityPrice%Change": [1]}
-    for colName, lags in lagsDict.items():
+    nonSigRemoveSigLags = {"ElectricityPrice%Change": [4], "GasolinePrice%Change": [1, 2], "IndPro%Change": [2], "RentalPriceAvg%Change": [7]}
+    nonSigMinusMichLags = {"ElectricityPrice%Change": [4], "GasolinePrice%Change": [1, 2], "IndPro%Change": [2], "RentalPriceAvg%Change": [7], "MichInflationExpectation": [1, 4]}
+    for colName, lags in nonSigMinusMichLags.items():
         df = makeLags(df, colName, lags)
     # Drop all rows with nan values from the df
     df.dropna(inplace=True)
+    '''Commented out for non sig lags run'''
     # Read in Covid data
     covidDf = readCovidData("Data\CovidData\ALLMONTHLYCOVIDDATA.xlsx")
     # Merge the two dataframes on the Date column
@@ -45,10 +54,10 @@ def mainDatasetMaking():
     # Fill the nan values in the df with 0
     df.fillna(0, inplace=True)
     # Save the df to a csv file
-    df.to_excel("Data\ConstructedDataframes\ALLECONDATAwithLagsAndCOVIDData.xlsx", index=False)
+    df.to_excel("Data\ConstructedDataframes\SigLagsAndMichAndCOVID.xlsx", index=False)
     # Save correlation matrix to excel file
     corrMatrix = df.corr()
-    corrMatrix.to_excel("Data\ConstructedDataframes\CorrMatrix.xlsx")
+    corrMatrix.to_excel("Data\ConstructedDataframes\SigLagsAndMichAndCOVIDCorrMatrix.xlsx")
     print("Done making and saving dataset")
 
 if __name__ == "__main__":
