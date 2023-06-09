@@ -57,7 +57,6 @@ def plotPredictions(xTest, yTest, model, modelName):
 
 def getModelMetrics(x, y, model, modelName, training=True):
     # Get the R^2, Adjusted R^2, MSE, RMSE, MAE, and Pearson's Correlation Coefficent for the model
-    '''temp fix?'''
     if training==False:
         y = np.array([value[0] for value in y.values.tolist()])
     predictions = model.predict(x)
@@ -199,14 +198,15 @@ def trainEvalLasso():
     # First, fit on pre2020 and evaluate
     myLasso.fit(pre2020xTrain, pre2020yTrain)
     print("Lasso finished first fit")
-    evaluateLasso(pre2020xTest, pre2020yTest, myLasso, True)
+    getModelMetrics(pre2020xTrain, pre2020yTrain, myLasso, "Lasso", training=True)
+    getModelMetrics(pre2020xTest, pre2020yTest, myLasso, "Lasso", training=False)
     # now, retrain with the "new" post2020 data
     myLasso.fit(post2020xTrain, post2020yTrain)
     print("Lasso finished second fit")
     # now, evaluate in total (full test set)
-    xTest = pd.concat([pre2020xTest, post2020xTest])
-    yTest = pd.concat([pre2020yTest, post2020yTest])
-    evaluateLasso(xTest, yTest, myLasso, False)
+    xTrain, xTest, yTrain, yTest = pd.concat([pre2020xTrain, post2020xTrain]), pd.concat([pre2020xTest, post2020xTest]), pd.concat([pre2020yTrain, post2020yTrain]), pd.concat([pre2020yTest, post2020yTest])
+    getModelMetrics(xTrain, yTrain, myLasso, "Lasso", training=True)
+    getModelMetrics(xTest, yTest, myLasso, "Lasso", training=False)
 
 def evaluateLasso(xTest, yTest, myLasso, pre):
     predictions = myLasso.predict(xTest)
