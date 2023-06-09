@@ -154,8 +154,7 @@ def trainEvalRF():
     getModelMetrics(xTrain, yTrain, myRF, "RF", training=True)
     getModelMetrics(xTest, yTest, myRF, "RF", training=False)
 
-
-def trainNN():
+def trainEvalNN():
     myNN = keras.Sequential([
     layers.BatchNormalization(),
     layers.Dense(300, activation='relu', input_shape=[22]),
@@ -191,15 +190,8 @@ def trainNN():
     plt.gcf().set_size_inches(10,6)
     plt.show()
     '''
-    return xTest, yTest, myNN
-
-def evaluateNN(xTest, yTest, myNN):
-    test_loss = myNN.evaluate(xTest, yTest, verbose=0)
-    # print(myNN.metrics_names)
-    predictions = myNN.predict(xTest)
-    print("NN Loss: ", test_loss)
-    print("NN MSE: ", mean_squared_error(yTest, predictions))
-    plotPredictions(xTest, yTest, myNN, "Neural Network")
+    getModelMetrics(xTrain, yTrain, myNN, "NN", training=True)
+    getModelMetrics(xTest, yTest, myNN, "NN", training=False)
 
 def trainEvalLasso():
     myLasso = Lasso(alpha = 0.5, warm_start=True)
@@ -235,8 +227,7 @@ def main():
     # Try basic RF on the econ data
     trainEvalRF()
     # Try basic NN on the econ data
-    xTest, yTest, firstNN = trainNN()
-    evaluateNN(xTest, yTest, firstNN)
+    trainEvalNN()
     # Try basic Lasso on the econ data
     trainEvalLasso()
     print("Program Done")
