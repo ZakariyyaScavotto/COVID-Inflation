@@ -49,7 +49,7 @@ def plotPredictions(xTest, yTest, model, modelName):
     # Plot the predictions of the model on the xTest data
     predictions = model.predict(xTest)
     plt.plot(predictions, label="Predictions")
-    plt.plot(yTest.values, label="Actual")
+    plt.plot(yTest, label="Actual")
     plt.legend()
     plt.title("Predictions vs Actual for "+modelName)
     plt.gcf().canvas.manager.set_window_title("Predictions vs Actual for "+modelName)
@@ -72,6 +72,7 @@ def getModelMetrics(x, y, model, modelName, training=True):
         print("R^2: "+str(r2))
         print("Adjusted R^2: "+str(adjR2))
     else:
+        plotPredictions(x, y, model, modelName)
         print("Testing Metrics for "+modelName+":")
     print("MSE: "+str(mse))
     print("RMSE: "+str(rmse))
