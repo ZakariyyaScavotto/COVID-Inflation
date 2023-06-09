@@ -65,6 +65,7 @@ def getModelMetrics(x, y, model, modelName, training=True):
     adjR2 = 1 - (1-r2)*(len(y)-1)/(len(y)-x.shape[1]-1)
     mse = mean_squared_error(y, predictions)
     rmse = np.sqrt(mse)
+    predictions = predictions.reshape(predictions.size, 1)
     mae = np.mean(np.abs(predictions - y))
     corr = np.corrcoef(predictions.T, y.T)[0,1]
     if training:
@@ -143,26 +144,16 @@ def trainEvalRF():
     pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
     myRF.fit(pre2020xTrain, pre2020yTrain.values.ravel())
     print("Finished training RF with pre2020 data")
-    plotPredictions(pre2020xTest, pre2020yTest, myRF, "Random Forest pre2020")
-    evaluateRF(pre2020xTest, pre2020yTest, myRF)
+    getModelMetrics(pre2020xTrain, pre2020yTrain, myRF, "RF", training=True)
+    getModelMetrics(pre2020xTest, pre2020yTest, myRF, "RF", training=False)
     print("Now training RF with 2020->beyond data")
     myRF.n_estimators += 100
     myRF.fit(post2020xTrain, post2020yTrain.values.ravel())
     print("Finished training RF with post2020 data")
-    xTest = pd.concat([pre2020xTest, post2020xTest])
-    yTest = pd.concat([pre2020yTest, post2020yTest])
-    plotPredictions(xTest, yTest, myRF, "Random Forest Full Test Set")
-    evaluateRF(xTest, yTest, myRF)
-    # combine the xTrains into one dataframe to get shap values
-    xTrain = pd.concat([pre2020xTrain, post2020xTrain])
-    
+    xTrain, xTest, yTrain, yTest = pd.concat([pre2020xTrain, post2020xTrain]), pd.concat([pre2020xTest, post2020xTest]), pd.concat([pre2020yTrain, post2020yTrain]), pd.concat([pre2020yTest, post2020yTest])
+    getModelMetrics(xTrain, yTrain, myRF, "RF", training=True)
+    getModelMetrics(xTest, yTest, myRF, "RF", training=False)
 
-def evaluateRF(xTest, yTest, myRF):
-    # Evaluate the RF by getting predictions on xTest, then calculating the MSE and R^2
-    predictions = myRF.predict(xTest)
-    print("RF MSE: ", mean_squared_error(yTest, predictions))
-    print("RF R^2: ", r2_score(yTest, predictions))
-    print("RF Adjusted R^2: ", 1 - (1-r2_score(yTest, predictions)) * (len(yTest)-1)/(len(yTest)-xTest.shape[1]-1))
 
 def trainNN():
     myNN = keras.Sequential([
