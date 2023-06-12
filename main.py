@@ -124,7 +124,7 @@ def trainEvalLR():
     print("Finished displaying training metrics for LR")
     getModelMetrics(xTest, yTest, myLR, "LR", training=False)
     print("Finished displaying testing metrics for LR")
-    
+
 def printLRCoeffSig(xTrain, yTrain, LR, xColumns):
     yTrain = [arr[0] for arr in yTrain]
     yTrain = np.array(yTrain)
@@ -172,14 +172,35 @@ def trainEvalNN():
     pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
     xTrain, xTest, yTrain, yTest = pd.concat([pre2020xTrain, post2020xTrain]), pd.concat([pre2020xTest, post2020xTest]), pd.concat([pre2020yTrain, post2020yTrain]), pd.concat([pre2020yTest, post2020yTest])
     history = myNN.fit(
-    xTrain, yTrain,
-    validation_data=(xTest, yTest),
+    pre2020xTrain, pre2020yTrain,
+    validation_data=(pre2020xTest, pre2020yTest),
     batch_size=100,
     epochs=100,
     verbose=1, # decided to make verbose to follow the training, feel free to set to 0
     callbacks=[es]
     )
-    print("Finished training NN")
+    print("Finished initial training NN")
+    getModelMetrics(pre2020xTrain, pre2020yTrain, myNN, "NN", training=True)
+    getModelMetrics(pre2020xTest, pre2020yTest, myNN, "NN", training=False)
+    # freeze all but the last layer of the model
+    for layer in myNN.layers[:-1]:
+        layer.trainable = False
+    # now fine tune the model on the post2020 data
+    myNN.compile(
+    optimizer='adam',
+    loss='mse',
+    )
+    history = myNN.fit(
+    post2020xTrain, post2020yTrain,
+    validation_data=(post2020xTest, post2020yTest),
+    batch_size=100,
+    epochs=100,
+    verbose=1, # decided to make verbose to follow the training, feel free to set to 0
+    callbacks=[es]
+    )
+    print("Finished fine tuning NN")
+    getModelMetrics(post2020xTrain, post2020yTrain, myNN, "NN", training=True)
+    getModelMetrics(post2020xTest, post2020yTest, myNN, "NN", training=False)
     '''
     explainer = shap.KernelExplainer(myNN.predict, xTrain)
     shap_values = explainer.shap_values(xTrain, nsamples = "auto")
@@ -189,6 +210,7 @@ def trainEvalNN():
     plt.gcf().set_size_inches(10,6)
     plt.show()
     '''
+    print("Full data set NN metrics")
     getModelMetrics(xTrain, yTrain, myNN, "NN", training=True)
     getModelMetrics(xTest, yTest, myNN, "NN", training=False)
 
