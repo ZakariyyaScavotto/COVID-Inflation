@@ -16,6 +16,7 @@ from tensorflow.keras import layers, metrics
 from keras_tuner.tuners import RandomSearch
 from sklearn.linear_model import Lasso
 from regressors import stats, plots
+import shutil, os
 
 def readEconData(filename):
     return pd.read_excel(filename)
@@ -161,6 +162,8 @@ https://www.analyticsvidhya.com/blog/2021/06/keras-tuner-auto-neural-network-arc
 '''
 
 def newTrainEvalNN():
+    if os.path.exists("untitled_project"):
+        shutil.rmtree("untitled_project")
     pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
     xTrain, xTest, yTrain, yTest = pd.concat([pre2020xTrain, post2020xTrain]), pd.concat([pre2020xTest, post2020xTest]), pd.concat([pre2020yTrain, post2020yTrain]), pd.concat([pre2020yTest, post2020yTest])
     tuner = RandomSearch(
@@ -172,6 +175,7 @@ def newTrainEvalNN():
     # print(tuner.search_space_summary())
     tuner.search(xTrain, yTrain, epochs=100, validation_data=(xTest, yTest))
     print(tuner.results_summary())
+    # es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
     myNN = tuner.hypermodel.build(tuner.get_best_hyperparameters()[0])
     history = myNN.fit(
     xTrain, yTrain,
@@ -179,6 +183,7 @@ def newTrainEvalNN():
     batch_size=100,
     epochs=100,
     verbose=0, # decided to make verbose to follow the training, feel free to set to 0
+    #callbacks=[es]
     )
     print("Finished training NN")
     getModelMetrics(xTrain, yTrain, myNN, "NN", training=True)
@@ -190,6 +195,7 @@ def buildNN(hp):
     for i in range(hp.Int('layers', 2, 6)):
         myNN.add(layers.Dense(units=hp.Int('units_' + str(i), 10, 100, step=10),
                                         activation=hp.Choice('act_' + str(i), ['relu', 'sigmoid'])))
+        myNN.add(layers.Dropout(0.25))
     myNN.add(layers.Dense(1))
     myNN.compile(optimizer=keras.optimizers.Adam(hp.Choice('learning_rate', values=[1e-2, 1e-4])),
                     loss = 'mse', metrics = [metrics.MeanSquaredError(), metrics.MeanAbsoluteError()])
@@ -226,14 +232,13 @@ def evaluateLasso(xTest, yTest, myLasso, pre):
 
 def main():
     # Try basic LR on the econ data
-    # trainEvalLR()
+    trainEvalLR()
     # Try basic RF on the econ data
-    # trainEvalRF()
+    trainEvalRF()
     # Try basic NN on the econ data
-    # trainEvalNN()
     newTrainEvalNN()
     # Try basic Lasso on the econ data
-    # trainEvalLasso()
+    trainEvalLasso()
     print("Program Done")
 
 if __name__ == "__main__":
