@@ -11,8 +11,9 @@ warnings.filterwarnings("ignore", message=".*The 'nopython' keyword.*")
 import shap
 import matplotlib.pyplot as plt
 from tensorflow import keras
-from tensorflow.keras import layers
 from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras import layers, metrics
+from keras_tuner.tuners import RandomSearch
 from sklearn.linear_model import Lasso
 from regressors import stats, plots
 
@@ -153,66 +154,46 @@ def trainEvalRF():
     getModelMetrics(xTrain, yTrain, myRF, "RF", training=True)
     getModelMetrics(xTest, yTest, myRF, "RF", training=False)
 
-def trainEvalNN():
-    myNN = keras.Sequential([
-    layers.BatchNormalization(),
-    layers.Dense(300, activation='relu', input_shape=[22]),
-    layers.BatchNormalization(),
-    layers.Dense(150, activation='relu'),
-    layers.BatchNormalization(),
-    layers.Dense(75, activation='relu'),
-    layers.BatchNormalization(),
-    layers.Dense(1),
-    ])
-    myNN.compile(
-    optimizer='adam',
-    loss='mse',
-    )   
-    es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
+'''
+Upon searching around for auto hyperparameter setting, came across keras-tuner
+After doing some reading to understand how it works, I found this article to be helpful in learning how to implement it
+https://www.analyticsvidhya.com/blog/2021/06/keras-tuner-auto-neural-network-architecture-selection/
+'''
+
+def newTrainEvalNN():
     pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
     xTrain, xTest, yTrain, yTest = pd.concat([pre2020xTrain, post2020xTrain]), pd.concat([pre2020xTest, post2020xTest]), pd.concat([pre2020yTrain, post2020yTrain]), pd.concat([pre2020yTest, post2020yTest])
+    tuner = RandomSearch(
+    buildNN,
+    objective = 'val_loss',
+    max_trials = 4,
+    executions_per_trial = 1,
+    )
+    # print(tuner.search_space_summary())
+    tuner.search(xTrain, yTrain, epochs=100, validation_data=(xTest, yTest))
+    print(tuner.results_summary())
+    myNN = tuner.hypermodel.build(tuner.get_best_hyperparameters()[0])
     history = myNN.fit(
-    pre2020xTrain, pre2020yTrain,
-    validation_data=(pre2020xTest, pre2020yTest),
+    xTrain, yTrain,
+    validation_data=(xTest, yTest),
     batch_size=100,
     epochs=100,
-    verbose=1, # decided to make verbose to follow the training, feel free to set to 0
-    callbacks=[es]
+    verbose=0, # decided to make verbose to follow the training, feel free to set to 0
     )
-    print("Finished initial training NN")
-    getModelMetrics(pre2020xTrain, pre2020yTrain, myNN, "NN", training=True)
-    getModelMetrics(pre2020xTest, pre2020yTest, myNN, "NN", training=False)
-    # freeze all but the last layer of the model
-    for layer in myNN.layers[:-1]:
-        layer.trainable = False
-    # now fine tune the model on the post2020 data
-    myNN.compile(
-    optimizer='adam',
-    loss='mse',
-    )
-    history = myNN.fit(
-    post2020xTrain, post2020yTrain,
-    validation_data=(post2020xTest, post2020yTest),
-    batch_size=100,
-    epochs=100,
-    verbose=1, # decided to make verbose to follow the training, feel free to set to 0
-    callbacks=[es]
-    )
-    print("Finished fine tuning NN")
-    getModelMetrics(post2020xTrain, post2020yTrain, myNN, "NN", training=True)
-    getModelMetrics(post2020xTest, post2020yTest, myNN, "NN", training=False)
-    '''
-    explainer = shap.KernelExplainer(myNN.predict, xTrain)
-    shap_values = explainer.shap_values(xTrain, nsamples = "auto")
-    shap.summary_plot(shap_values, xTrain, feature_names=xTrain.columns, plot_type="bar", show=False)
-    plt.title("Feature Importance for NN")
-    plt.gcf().canvas.manager.set_window_title("Feature Importance for NN")
-    plt.gcf().set_size_inches(10,6)
-    plt.show()
-    '''
-    print("Full data set NN metrics")
+    print("Finished training NN")
     getModelMetrics(xTrain, yTrain, myNN, "NN", training=True)
     getModelMetrics(xTest, yTest, myNN, "NN", training=False)
+
+def buildNN(hp):
+    myNN = keras.Sequential()
+    myNN.add(layers.Dense(units = 22, activation='relu', input_shape=[22]))
+    for i in range(hp.Int('layers', 2, 6)):
+        myNN.add(layers.Dense(units=hp.Int('units_' + str(i), 10, 100, step=10),
+                                        activation=hp.Choice('act_' + str(i), ['relu', 'sigmoid'])))
+    myNN.add(layers.Dense(1))
+    myNN.compile(optimizer=keras.optimizers.Adam(hp.Choice('learning_rate', values=[1e-2, 1e-4])),
+                    loss = 'mse', metrics = [metrics.MeanSquaredError(), metrics.MeanAbsoluteError()])
+    return myNN
 
 def trainEvalLasso():
     myLasso = Lasso(alpha = 0.5, warm_start=True)
@@ -245,13 +226,14 @@ def evaluateLasso(xTest, yTest, myLasso, pre):
 
 def main():
     # Try basic LR on the econ data
-    trainEvalLR()
+    # trainEvalLR()
     # Try basic RF on the econ data
-    trainEvalRF()
+    # trainEvalRF()
     # Try basic NN on the econ data
-    trainEvalNN()
+    # trainEvalNN()
+    newTrainEvalNN()
     # Try basic Lasso on the econ data
-    trainEvalLasso()
+    # trainEvalLasso()
     print("Program Done")
 
 if __name__ == "__main__":
