@@ -194,8 +194,9 @@ def buildNN(hp):
     myNN.add(layers.Dense(units = 22, activation='relu', input_shape=[22]))
     for i in range(hp.Int('layers', 2, 6)):
         myNN.add(layers.Dense(units=hp.Int('units_' + str(i), 10, 100, step=10),
-                                        activation=hp.Choice('act_' + str(i), ['relu', 'sigmoid'])))
-        myNN.add(layers.Dropout(0.25))
+                                        activation=hp.Choice('act_' + str(i), ['relu', 'sigmoid']),
+                                        kernel_regularizer=keras.regularizers.l2(hp.Choice('l2_' + str(i), [0.01, 0.001, 0.0001]))))
+        myNN.add(layers.Dropout(hp.Float('dropout_' + str(i), 0.2, 0.5, step=0.05)))
     myNN.add(layers.Dense(1))
     myNN.compile(optimizer=keras.optimizers.Adam(hp.Choice('learning_rate', values=[1e-2, 1e-4])),
                     loss = 'mse', metrics = [metrics.MeanSquaredError(), metrics.MeanAbsoluteError()])
