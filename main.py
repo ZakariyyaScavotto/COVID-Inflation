@@ -74,12 +74,13 @@ def getModelMetrics(x, y, model, modelName, training=True):
         print("R^2: "+str(r2))
         print("Adjusted R^2: "+str(adjR2))
     else:
-        plotPredictions(x, y, model, modelName)
         print("Testing Metrics for "+modelName+":")
     print("MSE: "+str(mse))
     print("RMSE: "+str(rmse))
     print("MAE: "+str(mae))
     print("Pearson's Correlation Coefficent: "+str(corr))
+    if not training:
+        plotPredictions(x, y, model, modelName)
     if modelName ==  "LR" and training:
         printLRCoeffSig(x, y.values.tolist(), model, x.columns)
         plotLRResiduals(x, y.values.tolist(), model)
@@ -162,15 +163,18 @@ https://www.analyticsvidhya.com/blog/2021/06/keras-tuner-auto-neural-network-arc
 '''
 
 def newTrainEvalNN():
-    if os.path.exists("untitled_project"):
-        shutil.rmtree("untitled_project")
+    if os.path.exists("nnProject"):
+        shutil.rmtree("nnProject")
+        print("Old NN project deleted")
     pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
     xTrain, xTest, yTrain, yTest = pd.concat([pre2020xTrain, post2020xTrain]), pd.concat([pre2020xTest, post2020xTest]), pd.concat([pre2020yTrain, post2020yTrain]), pd.concat([pre2020yTest, post2020yTest])
     tuner = RandomSearch(
     buildNN,
     objective = 'val_loss',
-    max_trials = 4,
-    executions_per_trial = 1,
+    max_trials = 20,
+    executions_per_trial = 3,
+    directory = "nnProject",
+    project_name = "NN"
     )
     # print(tuner.search_space_summary())
     tuner.search(xTrain, yTrain, epochs=100, validation_data=(xTest, yTest))
@@ -188,6 +192,7 @@ def newTrainEvalNN():
     print("Finished training NN")
     getModelMetrics(xTrain, yTrain, myNN, "NN", training=True)
     getModelMetrics(xTest, yTest, myNN, "NN", training=False)
+    print(myNN.summary())
 
 def buildNN(hp):
     myNN = keras.Sequential()
@@ -231,15 +236,65 @@ def evaluateLasso(xTest, yTest, myLasso, pre):
         print("Total Lasso Adjusted R^2: ", 1 - (1-r2_score(yTest, predictions)) * (len(yTest)-1)/(len(yTest)-xTest.shape[1]-1))
         plotPredictions(xTest, yTest, myLasso, "Lasso Full Test Set")
 
+def trainEvalRNN():
+    if os.path.exists("rnnProject"):
+        shutil.rmtree("rnnProject")
+        print("Old RNN project deleted")
+    pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
+    xTrain, xTest, yTrain, yTest = pd.concat([pre2020xTrain, post2020xTrain]), pd.concat([pre2020xTest, post2020xTest]), pd.concat([pre2020yTrain, post2020yTrain]), pd.concat([pre2020yTest, post2020yTest])
+    xTrain, xTest = xTrain.values.reshape(-1, 1, 22), xTest.values.reshape(-1, 1, 22) # reshape train/test data for RNN to work (adding time dimension)
+    tuner = RandomSearch(
+    buildRNN,
+    objective = 'val_loss',
+    max_trials = 20,
+    executions_per_trial = 3,
+    directory = "rnnProject",
+    project_name = "RNN"
+    )
+    # print(tuner.search_space_summary())
+    tuner.search(xTrain, yTrain, epochs=100, validation_data=(xTest, yTest))
+    print(tuner.results_summary())
+    # es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
+    myRNN = tuner.hypermodel.build(tuner.get_best_hyperparameters()[0])
+    history = myRNN.fit(
+    xTrain, yTrain,
+    validation_data=(xTest, yTest),
+    batch_size=100,
+    epochs=100,
+    verbose=0, # decided to make verbose to follow the training, feel free to set to 0
+    #callbacks=[es]
+    )
+    print("Finished training RNN")
+    getModelMetrics(xTrain, yTrain, myRNN, "RNN", training=True)
+    getModelMetrics(xTest, yTest, myRNN, "RNN", training=False)
+    print(myRNN.summary())
+
+def buildRNN(hp):
+    myRNN = keras.Sequential()
+    myRNN.add(layers.SimpleRNN(units = 66, activation='relu', input_shape=(1,22), return_sequences=True))
+    myRNN.add(layers.SimpleRNN(units= 22, return_sequences=False))
+    for i in range(hp.Int('layers', 2, 6)):
+        myRNN.add(layers.Dense(units=hp.Int('units_' + str(i), 10, 100, step=10),
+                                        activation=hp.Choice('act_' + str(i), ['relu', 'sigmoid']),
+                                        kernel_regularizer=keras.regularizers.l2(hp.Choice('l2_' + str(i), [0.01, 0.001, 0.0001]))))
+        myRNN.add(layers.Dropout(hp.Float('dropout_' + str(i), 0.2, 0.5, step=0.05)))
+    myRNN.add(layers.Dense(1))
+    myRNN.compile(optimizer=keras.optimizers.Adam(hp.Choice('learning_rate', values=[1e-2, 1e-4])),
+                    loss = 'mse', metrics = [metrics.MeanSquaredError(), metrics.MeanAbsoluteError()])
+    return myRNN
+
 def main():
-    # Try basic LR on the econ data
+    
+    # Try basic LR on the data
     trainEvalLR()
-    # Try basic RF on the econ data
+    # Try basic RF on the data
     trainEvalRF()
-    # Try basic NN on the econ data
-    newTrainEvalNN()
-    # Try basic Lasso on the econ data
+    # Try basic Lasso on the data
     trainEvalLasso()
+    # Try basic NN on the data
+    newTrainEvalNN()
+    # Try basic RNN on the data
+    trainEvalRNN()
     print("Program Done")
 
 if __name__ == "__main__":
