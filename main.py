@@ -246,7 +246,7 @@ def trainEvalRNN():
     tuner = RandomSearch(
     buildRNN,
     objective = 'val_loss',
-    max_trials = 20,
+    max_trials = 70,
     executions_per_trial = 3,
     directory = "rnnProject",
     project_name = "RNN"
@@ -271,13 +271,7 @@ def trainEvalRNN():
 
 def buildRNN(hp):
     myRNN = keras.Sequential()
-    myRNN.add(layers.SimpleRNN(units = 66, activation='relu', input_shape=(1,22), return_sequences=True))
-    myRNN.add(layers.SimpleRNN(units= 22, return_sequences=False))
-    for i in range(hp.Int('layers', 2, 6)):
-        myRNN.add(layers.Dense(units=hp.Int('units_' + str(i), 10, 100, step=10),
-                                        activation=hp.Choice('act_' + str(i), ['relu', 'sigmoid']),
-                                        kernel_regularizer=keras.regularizers.l2(hp.Choice('l2_' + str(i), [0.01, 0.001, 0.0001]))))
-        myRNN.add(layers.Dropout(hp.Float('dropout_' + str(i), 0.2, 0.5, step=0.05)))
+    myRNN.add(layers.SimpleRNN(units = hp.Int('units', 1, 60), activation='relu', input_shape=(1,22), return_sequences=False))
     myRNN.add(layers.Dense(1))
     myRNN.compile(optimizer=keras.optimizers.Adam(hp.Choice('learning_rate', values=[1e-2, 1e-4])),
                     loss = 'mse', metrics = [metrics.MeanSquaredError(), metrics.MeanAbsoluteError()])
@@ -292,9 +286,9 @@ def main():
     # Try basic Lasso on the data
     # trainEvalLasso()
     # Try basic NN on the data
-    newTrainEvalNN()
+    # newTrainEvalNN()
     # Try basic RNN on the data
-    # trainEvalRNN()
+    trainEvalRNN()
     print("Program Done")
 
 if __name__ == "__main__":
