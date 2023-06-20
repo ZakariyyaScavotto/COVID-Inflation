@@ -23,7 +23,7 @@ def readEconData(filename):
 
 def makeTrainTest(): # Train test but with breaking up between pre-2020 and 2020->beyond
     # Read econ data
-    econData = readEconData("Data\ConstructedDataframes\ALLECONDATAwithLagsAndCOVIDData.xlsx")
+    econData = readEconData("Data\ConstructedDataframes\ALLECONDATAwithLagsAndCOVIDDataANDInflationLag.xlsx")
     # split into pre-2020 and 2020->beyond
     ind2020 = econData.query("Date == '2020-01-01'").index.values[0]
     pre2020EconData, post2020EconData = econData.iloc[:ind2020].copy(), econData.iloc[ind2020:].copy()
@@ -196,7 +196,7 @@ def newTrainEvalNN():
 
 def buildNN(hp):
     myNN = keras.Sequential()
-    myNN.add(layers.Dense(units = 22, activation='relu', input_shape=[22]))
+    myNN.add(layers.Dense(units = 24, activation='relu', input_shape=[24]))
     for i in range(hp.Int('layers', 1, 5)):
         myNN.add(layers.Dense(units=hp.Int('units_' + str(i), 2, 60, step=2),
                                         activation=hp.Choice('act_' + str(i), ['relu', 'sigmoid']),
@@ -242,7 +242,7 @@ def trainEvalRNN():
         print("Old RNN project deleted")
     pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
     xTrain, xTest, yTrain, yTest = pd.concat([pre2020xTrain, post2020xTrain]), pd.concat([pre2020xTest, post2020xTest]), pd.concat([pre2020yTrain, post2020yTrain]), pd.concat([pre2020yTest, post2020yTest])
-    xTrain, xTest = xTrain.values.reshape(-1, 1, 22), xTest.values.reshape(-1, 1, 22) # reshape train/test data for RNN to work (adding time dimension)
+    xTrain, xTest = xTrain.values.reshape(-1, 1, 24), xTest.values.reshape(-1, 1, 24) # reshape train/test data for RNN to work (adding time dimension)
     tuner = RandomSearch(
     buildRNN,
     objective = 'val_loss',
@@ -271,7 +271,7 @@ def trainEvalRNN():
 
 def buildRNN(hp):
     myRNN = keras.Sequential()
-    myRNN.add(layers.SimpleRNN(units = hp.Int('units', 1, 60), activation='relu', input_shape=(1,22), return_sequences=False))
+    myRNN.add(layers.SimpleRNN(units = hp.Int('units', 1, 60), activation='relu', input_shape=(1,24), return_sequences=False))
     myRNN.add(layers.Dense(1))
     myRNN.compile(optimizer=keras.optimizers.Adam(hp.Choice('learning_rate', values=[1e-2, 1e-4])),
                     loss = 'mse', metrics = [metrics.MeanSquaredError(), metrics.MeanAbsoluteError()])
@@ -280,13 +280,13 @@ def buildRNN(hp):
 def main():
     
     # Try basic LR on the data
-    # trainEvalLR()
+    trainEvalLR()
     # Try basic RF on the data
-    # trainEvalRF()
+    trainEvalRF()
     # Try basic Lasso on the data
     # trainEvalLasso()
     # Try basic NN on the data
-    # newTrainEvalNN()
+    newTrainEvalNN()
     # Try basic RNN on the data
     trainEvalRNN()
     print("Program Done")

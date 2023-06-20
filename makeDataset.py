@@ -34,13 +34,15 @@ def mainDatasetMaking():
     nonSigMinusMichRemove = ["BananaPrice%Change", "BreadPrice%Change", "EggPrice%Change", "GroundBeefPrice%Change", "2008-9RecessionDummyVar", 
                     "UnemploymentRate%Change", "ChickenPrice%Change", "HouseStart%Change", "HPI%Change",  
                     "MilkPrice%Change", "UtilityPrice%Change", "2008-9RecessionDummyVar"]
-    df.drop(nonSigMinusMichRemove, axis=1, inplace=True)
+    df.drop(originalRemove, axis=1, inplace=True)
+    # Duplicate Inflation variable to create feature for lagged inflation
+    df["AnnualizedMoM-CPI-InflationFeat"] = df.loc[:,"AnnualizedMoM-CPI-Inflation"]
     originalLagsDict = {"ChickenPrice%Change": [1], "ElectricityPrice%Change": [1,4], "GasolinePrice%Change": [1,2], "HouseStart%Change": [1],
-                "HPI%Change": [1,2,3], "IndPro%Change": [1,2], "MichInflationExpectation": [1], "MilkPrice%Change":[1], "RentalPriceAvg%Change":[1,2,7],
-                "UtilityPrice%Change": [1]}
+                "HPI%Change": [1,2,3], "IndPro%Change": [1,2], "MichInflationExpectation": [1, 4], "MilkPrice%Change":[1], "RentalPriceAvg%Change":[1,2,7],
+                "UtilityPrice%Change": [1], "AnnualizedMoM-CPI-InflationFeat": [1]}
     nonSigRemoveSigLags = {"ElectricityPrice%Change": [4], "GasolinePrice%Change": [1, 2], "IndPro%Change": [2], "RentalPriceAvg%Change": [7]}
     nonSigMinusMichLags = {"ElectricityPrice%Change": [4], "GasolinePrice%Change": [1, 2], "IndPro%Change": [2], "RentalPriceAvg%Change": [7], "MichInflationExpectation": [1, 4]}
-    for colName, lags in nonSigMinusMichLags.items():
+    for colName, lags in originalLagsDict.items():
         df = makeLags(df, colName, lags)
     # Drop all rows with nan values from the df
     df.dropna(inplace=True)
@@ -54,10 +56,10 @@ def mainDatasetMaking():
     # Fill the nan values in the df with 0
     df.fillna(0, inplace=True)
     # Save the df to a csv file
-    df.to_excel("Data\ConstructedDataframes\SigLagsAndMichAndCOVID.xlsx", index=False)
+    df.to_excel("Data\ConstructedDataframes\ALLECONDATAwithLagsAndCOVIDDataANDInflationLag.xlsx", index=False)
     # Save correlation matrix to excel file
     corrMatrix = df.corr()
-    corrMatrix.to_excel("Data\ConstructedDataframes\SigLagsAndMichAndCOVIDCorrMatrix.xlsx")
+    corrMatrix.to_excel("Data\ConstructedDataframes\ALLECONDATAwithLagsAndCOVIDDataANDInflationLagCorrMat.xlsx")
     print("Done making and saving dataset")
 
 if __name__ == "__main__":
