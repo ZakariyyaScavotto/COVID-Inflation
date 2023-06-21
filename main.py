@@ -23,7 +23,8 @@ def readEconData(filename):
 
 def makeTrainTest(): # Train test but with breaking up between pre-2020 and 2020->beyond
     # Read econ data
-    econData = readEconData("Data\ConstructedDataframes\ALLECONDATAwithLagsAndCOVIDDataANDInflationLag.xlsx")
+    # econData = readEconData("Data\ConstructedDataframes\ALLECONDATAwithLagsAndCOVIDDataANDInflationLag.xlsx")
+    econData = readEconData("Data\ConstructedDataframes\AutoregressiveSigLags.xlsx")
     # split into pre-2020 and 2020->beyond
     ind2020 = econData.query("Date == '2020-01-01'").index.values[0]
     pre2020EconData, post2020EconData = econData.iloc[:ind2020].copy(), econData.iloc[ind2020:].copy()
@@ -286,9 +287,9 @@ def main():
     # Try basic Lasso on the data
     # trainEvalLasso()
     # Try basic NN on the data
-    newTrainEvalNN()
+    # newTrainEvalNN()
     # Try basic RNN on the data
-    trainEvalRNN()
+    # trainEvalRNN()
     print("Program Done")
 
 if __name__ == "__main__":

@@ -46,7 +46,7 @@ def mainDatasetMaking():
                 "UtilityPrice%Change": [1], "AnnualizedMoM-CPI-InflationFeat": [1]}
     nonSigRemoveSigLags = {"ElectricityPrice%Change": [4], "GasolinePrice%Change": [1, 2], "IndPro%Change": [2], "RentalPriceAvg%Change": [7]}
     nonSigMinusMichLags = {"ElectricityPrice%Change": [4], "GasolinePrice%Change": [1, 2], "IndPro%Change": [2], "RentalPriceAvg%Change": [7], "MichInflationExpectation": [1, 4]}
-    allRemoveLags = {"AnnualizedMoM-CPI-InflationFeat": [i for i in range(1, 13)]}
+    allRemoveLags = {"AnnualizedMoM-CPI-InflationFeat": [1,2,5,7,10,11,12]}#[i for i in range(1, 13)]}
     for colName, lags in allRemoveLags.items():
         df = makeLags(df, colName, lags)
     # Drop all rows with nan values from the df
@@ -62,10 +62,10 @@ def mainDatasetMaking():
     # Fill the nan values in the df with 0
     df.fillna(0, inplace=True)
     # Save the df to a csv file
-    df.to_excel("Data\ConstructedDataframes\AutoregressiveAllLags.xlsx", index=False)
+    df.to_excel("Data\ConstructedDataframes\AutoregressiveSigLags.xlsx", index=False)
     # Save correlation matrix to excel file
     corrMatrix = df.corr()
-    corrMatrix.to_excel("Data\ConstructedDataframes\AutoregressiveAllLagsCorrMat.xlsx")
+    corrMatrix.to_excel("Data\ConstructedDataframes\AutoregressiveSigLagsCorrMat.xlsx")
     print("Done making and saving dataset")
 
 if __name__ == "__main__":
