@@ -34,7 +34,11 @@ def mainDatasetMaking():
     nonSigMinusMichRemove = ["BananaPrice%Change", "BreadPrice%Change", "EggPrice%Change", "GroundBeefPrice%Change", "2008-9RecessionDummyVar", 
                     "UnemploymentRate%Change", "ChickenPrice%Change", "HouseStart%Change", "HPI%Change",  
                     "MilkPrice%Change", "UtilityPrice%Change", "2008-9RecessionDummyVar"]
-    df.drop(originalRemove, axis=1, inplace=True)
+    # Make list of all features but AnnualizedMoM-CPI-Inflation and remove them from the df
+    allRemove = ["BananaPrice%Change", "BreadPrice%Change", "EggPrice%Change", "GroundBeefPrice%Change", "2008-9RecessionDummyVar", 
+                    "UnemploymentRate%Change", "ChickenPrice%Change", "HouseStart%Change", "HPI%Change", "MichInflationExpectation", 
+                    "MilkPrice%Change", "UtilityPrice%Change", "2008-9RecessionDummyVar", "ElectricityPrice%Change", "GasolinePrice%Change", "IndPro%Change", "RentalPriceAvg%Change"]
+    df.drop(allRemove, axis=1, inplace=True)
     # Duplicate Inflation variable to create feature for lagged inflation
     df["AnnualizedMoM-CPI-InflationFeat"] = df.loc[:,"AnnualizedMoM-CPI-Inflation"]
     originalLagsDict = {"ChickenPrice%Change": [1], "ElectricityPrice%Change": [1,4], "GasolinePrice%Change": [1,2], "HouseStart%Change": [1],
@@ -42,24 +46,26 @@ def mainDatasetMaking():
                 "UtilityPrice%Change": [1], "AnnualizedMoM-CPI-InflationFeat": [1]}
     nonSigRemoveSigLags = {"ElectricityPrice%Change": [4], "GasolinePrice%Change": [1, 2], "IndPro%Change": [2], "RentalPriceAvg%Change": [7]}
     nonSigMinusMichLags = {"ElectricityPrice%Change": [4], "GasolinePrice%Change": [1, 2], "IndPro%Change": [2], "RentalPriceAvg%Change": [7], "MichInflationExpectation": [1, 4]}
-    for colName, lags in originalLagsDict.items():
+    allRemoveLags = {"AnnualizedMoM-CPI-InflationFeat": [i for i in range(1, 13)]}
+    for colName, lags in allRemoveLags.items():
         df = makeLags(df, colName, lags)
     # Drop all rows with nan values from the df
     df.dropna(inplace=True)
-    '''Commented out for non sig lags run'''
+    '''Commented out for non sig lags run
     # Read in Covid data
     covidDf = readCovidData("Data\CovidData\ALLMONTHLYCOVIDDATA.xlsx")
     # Merge the two dataframes on the Date column
     df = pd.merge(df, covidDf, how="outer")
+    '''
     # Move the AnnualizedMoM-CPI-Inflation column to the end of the df for formatting purposes
     df = df[[c for c in df if c not in ["AnnualizedMoM-CPI-Inflation"]] + ["AnnualizedMoM-CPI-Inflation"]]
     # Fill the nan values in the df with 0
     df.fillna(0, inplace=True)
     # Save the df to a csv file
-    df.to_excel("Data\ConstructedDataframes\ALLECONDATAwithLagsAndCOVIDDataANDInflationLag.xlsx", index=False)
+    df.to_excel("Data\ConstructedDataframes\AutoregressiveAllLags.xlsx", index=False)
     # Save correlation matrix to excel file
     corrMatrix = df.corr()
-    corrMatrix.to_excel("Data\ConstructedDataframes\ALLECONDATAwithLagsAndCOVIDDataANDInflationLagCorrMat.xlsx")
+    corrMatrix.to_excel("Data\ConstructedDataframes\AutoregressiveAllLagsCorrMat.xlsx")
     print("Done making and saving dataset")
 
 if __name__ == "__main__":
