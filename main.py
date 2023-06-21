@@ -23,8 +23,8 @@ def readEconData(filename):
 
 def makeTrainTest(): # Train test but with breaking up between pre-2020 and 2020->beyond
     # Read econ data
-    # econData = readEconData("Data\ConstructedDataframes\ALLECONDATAwithLagsAndCOVIDDataANDInflationLag.xlsx")
-    econData = readEconData("Data\ConstructedDataframes\AutoregressiveSigLags.xlsx")
+    econData = readEconData("Data\ConstructedDataframes\ALLECONDATAwithLagsAndCOVIDDataANDInflationLag.xlsx")
+    # econData = readEconData("Data\ConstructedDataframes\AutoregressiveSigLags.xlsx")
     # split into pre-2020 and 2020->beyond
     ind2020 = econData.query("Date == '2020-01-01'").index.values[0]
     pre2020EconData, post2020EconData = econData.iloc[:ind2020].copy(), econData.iloc[ind2020:].copy()
@@ -60,8 +60,11 @@ def plotPredictions(xTest, yTest, model, modelName):
 
 def getModelMetrics(x, y, model, modelName, training=True):
     # Get the R^2, Adjusted R^2, MSE, RMSE, MAE, and Pearson's Correlation Coefficent for the model
-    if training==False:
+    # check if y is a numpy.ndarray
+    if training==False and not(y.__class__ == np.ndarray):
         y = np.array([value[0] for value in y.values.tolist()])
+    elif training==False:
+        y = np.array([value[0] for value in y.tolist()])
     predictions = model.predict(x)
     r2 = r2_score(y, predictions)
     adjR2 = 1 - (1-r2)*(len(y)-1)/(len(y)-x.shape[1]-1)
@@ -185,7 +188,7 @@ def newTrainEvalNN():
     history = myNN.fit(
     xTrain, yTrain,
     validation_data=(xTest, yTest),
-    batch_size=100,
+    batch_size=32,
     epochs=100,
     verbose=0, # decided to make verbose to follow the training, feel free to set to 0
     #callbacks=[es]
@@ -243,36 +246,44 @@ def trainEvalRNN():
         print("Old RNN project deleted")
     pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
     xTrain, xTest, yTrain, yTest = pd.concat([pre2020xTrain, post2020xTrain]), pd.concat([pre2020xTest, post2020xTest]), pd.concat([pre2020yTrain, post2020yTrain]), pd.concat([pre2020yTest, post2020yTest])
-    xTrain, xTest = xTrain.values.reshape(-1, 1, 24), xTest.values.reshape(-1, 1, 24) # reshape train/test data for RNN to work (adding time dimension)
+    # xTrain, xTest = xTrain.values.reshape(-1, 1, 24), xTest.values.reshape(-1, 1, 24) # reshape train/test data for RNN to work (adding time dimension)
+    timestep = 3 # number of timesteps to look back
+    # Split the xTrain and xTeset into rolling windows of size timestep, and have yTrain and yTest be the next value
+    rnnXTrain = np.array([xTrain[i:i+timestep] for i in range(len(xTrain)-timestep)])
+    rnnXTest = np.array([xTest[i:i+timestep] for i in range(len(xTest)-timestep)])
+    rnnYTrain = np.array([yTrain.values[i+timestep] for i in range(len(yTrain)-timestep)])
+    rnnYTest = np.array([yTest.values[i+timestep] for i in range(len(yTest)-timestep)])
+    rnnXTrain.reshape(len(rnnXTrain), timestep, 24)
+    rnnXTest.reshape(len(rnnXTest), timestep, 24)
     tuner = RandomSearch(
     buildRNN,
     objective = 'val_loss',
-    max_trials = 70,
+    max_trials = 150,
     executions_per_trial = 3,
     directory = "rnnProject",
     project_name = "RNN"
     )
     # print(tuner.search_space_summary())
-    tuner.search(xTrain, yTrain, epochs=100, validation_data=(xTest, yTest))
+    tuner.search(rnnXTrain, rnnYTrain, epochs=100, validation_data=(rnnXTest, rnnYTest))
     print(tuner.results_summary())
     # es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
     myRNN = tuner.hypermodel.build(tuner.get_best_hyperparameters()[0])
     history = myRNN.fit(
-    xTrain, yTrain,
-    validation_data=(xTest, yTest),
-    batch_size=100,
+    rnnXTrain, rnnYTrain,
+    validation_data=(rnnXTest, rnnYTest),
+    batch_size=32,
     epochs=100,
     verbose=0, # decided to make verbose to follow the training, feel free to set to 0
     #callbacks=[es]
     )
     print("Finished training RNN")
-    getModelMetrics(xTrain, yTrain, myRNN, "RNN", training=True)
-    getModelMetrics(xTest, yTest, myRNN, "RNN", training=False)
+    getModelMetrics(rnnXTrain, rnnYTrain, myRNN, "RNN", training=True)
+    getModelMetrics(rnnXTest, rnnYTest, myRNN, "RNN", training=False)
     print(myRNN.summary())
 
 def buildRNN(hp):
     myRNN = keras.Sequential()
-    myRNN.add(layers.SimpleRNN(units = hp.Int('units', 1, 60), activation='relu', input_shape=(1,24), return_sequences=False))
+    myRNN.add(layers.SimpleRNN(units = hp.Int('units', 1, 60), activation='relu', input_shape=(3,24), dropout = (hp.Float('dropout', 0.2, 0.7, step=0.05)), recurrent_dropout = (hp.Float('recurDropout' , 0.2, 0.7, step=0.05)),return_sequences=False))
     myRNN.add(layers.Dense(1))
     myRNN.compile(optimizer=keras.optimizers.Adam(hp.Choice('learning_rate', values=[1e-2, 1e-4])),
                     loss = 'mse', metrics = [metrics.MeanSquaredError(), metrics.MeanAbsoluteError()])
@@ -287,9 +298,9 @@ def main():
     # Try basic Lasso on the data
     # trainEvalLasso()
     # Try basic NN on the data
-    # newTrainEvalNN()
+    newTrainEvalNN()
     # Try basic RNN on the data
-    # trainEvalRNN()
+    trainEvalRNN()
     print("Program Done")
 
 if __name__ == "__main__":
