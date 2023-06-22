@@ -82,7 +82,7 @@ def getModelMetrics(x, y, model, modelName, training=True):
     print("MSE: "+str(mse))
     print("RMSE: "+str(rmse))
     print("MAE: "+str(mae))
-    print("Pearson's Correlation Coefficent: "+str(corr))
+    print("Pearson's Correlation Coefficient: "+str(corr))
     if not training:
         plotPredictions(x, y, model, modelName)
     if modelName ==  "LR" and training:
