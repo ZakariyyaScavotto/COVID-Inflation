@@ -23,7 +23,8 @@ def readEconData(filename):
 
 def makeTrainTest(): # Train test but with breaking up between pre-2020 and 2020->beyond
     # Read econ data
-    econData = readEconData("Data\ConstructedDataframes\ALLECONDATAwithLagsAndCOVIDDataANDInflationLag.xlsx")
+    econData = readEconData("Data\ConstructedDataframes\AllEcon1990AndCOVIDWithLags.xlsx")
+    # econData = readEconData("Data\ConstructedDataframes\ALLECONDATAwithLagsAndCOVIDDataANDInflationLag.xlsx")
     # econData = readEconData("Data\ConstructedDataframes\AutoregressiveSigLags.xlsx")
     # split into pre-2020 and 2020->beyond
     ind2020 = econData.query("Date == '2020-01-01'").index.values[0]
@@ -200,7 +201,7 @@ def newTrainEvalNN():
 
 def buildNN(hp):
     myNN = keras.Sequential()
-    myNN.add(layers.Dense(units = 24, activation='relu', input_shape=[24]))
+    myNN.add(layers.Dense(units = 24, activation='relu', input_shape=[23]))
     for i in range(hp.Int('layers', 1, 5)):
         myNN.add(layers.Dense(units=hp.Int('units_' + str(i), 2, 60, step=2),
                                         activation=hp.Choice('act_' + str(i), ['relu', 'sigmoid']),
@@ -253,8 +254,8 @@ def trainEvalRNN():
     rnnXTest = np.array([xTest[i:i+timestep] for i in range(len(xTest)-timestep)])
     rnnYTrain = np.array([yTrain.values[i+timestep] for i in range(len(yTrain)-timestep)])
     rnnYTest = np.array([yTest.values[i+timestep] for i in range(len(yTest)-timestep)])
-    rnnXTrain.reshape(len(rnnXTrain), timestep, 24)
-    rnnXTest.reshape(len(rnnXTest), timestep, 24)
+    rnnXTrain.reshape(len(rnnXTrain), timestep, 23)
+    rnnXTest.reshape(len(rnnXTest), timestep, 23)
     tuner = RandomSearch(
     buildRNN,
     objective = 'val_loss',
@@ -283,7 +284,7 @@ def trainEvalRNN():
 
 def buildRNN(hp):
     myRNN = keras.Sequential()
-    myRNN.add(layers.SimpleRNN(units = hp.Int('units', 1, 60), activation='relu', input_shape=(3,24), dropout = (hp.Float('dropout', 0.2, 0.7, step=0.05)), recurrent_dropout = (hp.Float('recurDropout' , 0.2, 0.7, step=0.05)),return_sequences=False))
+    myRNN.add(layers.SimpleRNN(units = hp.Int('units', 1, 60), activation='relu', input_shape=(3,23), dropout = (hp.Float('dropout', 0.2, 0.7, step=0.05)), recurrent_dropout = (hp.Float('recurDropout' , 0.2, 0.7, step=0.05)),return_sequences=False))
     myRNN.add(layers.Dense(1))
     myRNN.compile(optimizer=keras.optimizers.Adam(hp.Choice('learning_rate', values=[1e-2, 1e-4])),
                     loss = 'mse', metrics = [metrics.MeanSquaredError(), metrics.MeanAbsoluteError()])
