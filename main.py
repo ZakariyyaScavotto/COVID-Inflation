@@ -212,35 +212,6 @@ def buildNN(hp):
                     loss = 'mse', metrics = [metrics.MeanSquaredError(), metrics.MeanAbsoluteError()])
     return myNN
 
-def trainEvalLasso():
-    myLasso = Lasso(alpha = 0.5, warm_start=True)
-    pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
-    # First, fit on pre2020 and evaluate
-    myLasso.fit(pre2020xTrain, pre2020yTrain)
-    print("Lasso finished first fit")
-    getModelMetrics(pre2020xTrain, pre2020yTrain, myLasso, "Lasso", training=True)
-    getModelMetrics(pre2020xTest, pre2020yTest, myLasso, "Lasso", training=False)
-    # now, retrain with the "new" post2020 data
-    myLasso.fit(post2020xTrain, post2020yTrain)
-    print("Lasso finished second fit")
-    # now, evaluate in total (full test set)
-    xTrain, xTest, yTrain, yTest = pd.concat([pre2020xTrain, post2020xTrain]), pd.concat([pre2020xTest, post2020xTest]), pd.concat([pre2020yTrain, post2020yTrain]), pd.concat([pre2020yTest, post2020yTest])
-    getModelMetrics(xTrain, yTrain, myLasso, "Lasso", training=True)
-    getModelMetrics(xTest, yTest, myLasso, "Lasso", training=False)
-
-def evaluateLasso(xTest, yTest, myLasso, pre):
-    predictions = myLasso.predict(xTest)
-    if pre:
-        print("Pre2020 Lasso MSE: ", mean_squared_error(yTest, predictions))
-        print("Pre2020 Lasso R^2: ", r2_score(yTest, predictions))
-        print("Pre2020 Lasso Adjusted R^2: ", 1 - (1-r2_score(yTest, predictions)) * (len(yTest)-1)/(len(yTest)-xTest.shape[1]-1))
-        plotPredictions(xTest, yTest, myLasso, "Lasso Pre 2020")
-    else:
-        print("Total Lasso MSE: ", mean_squared_error(yTest, predictions))
-        print("Total Lasso R^2: ", r2_score(yTest, predictions))
-        print("Total Lasso Adjusted R^2: ", 1 - (1-r2_score(yTest, predictions)) * (len(yTest)-1)/(len(yTest)-xTest.shape[1]-1))
-        plotPredictions(xTest, yTest, myLasso, "Lasso Full Test Set")
-
 def trainEvalRNN():
     if os.path.exists("rnnProject"):
         shutil.rmtree("rnnProject")
@@ -291,16 +262,13 @@ def buildRNN(hp):
     return myRNN
 
 def main():
-    
-    # Try basic LR on the data
+    # Try  LR on the data
     trainEvalLR()
-    # Try basic RF on the data
+    # Try  RF on the data
     trainEvalRF()
-    # Try basic Lasso on the data
-    # trainEvalLasso()
-    # Try basic NN on the data
+    # Try NN on the data
     newTrainEvalNN()
-    # Try basic RNN on the data
+    # Try RNN on the data
     trainEvalRNN()
     print("Program Done")
 
