@@ -17,6 +17,7 @@ from keras_tuner.tuners import RandomSearch
 from sklearn.linear_model import Lasso
 from regressors import stats, plots
 import shutil, os
+import pickle
 
 def readEconData(filename):
     return pd.read_excel(filename)
@@ -121,17 +122,25 @@ def getShapPlot(x, model, modelName):
     else:
         print("Shap Plot Error: Unsupported model to get SHAP Plot")
 
-def trainEvalLR():
-    myLR = LinearRegression()
+def trainEvalLR(loadModel=False):
     pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
     # combine the xTrains into one dataframe, the xTests into one dataframe, the yTrains into one dataframe, and the yTests into one dataframe
     xTrain, xTest, yTrain, yTest = pd.concat([pre2020xTrain, post2020xTrain]), pd.concat([pre2020xTest, post2020xTest]), pd.concat([pre2020yTrain, post2020yTrain]), pd.concat([pre2020yTest, post2020yTest])
-    myLR.fit(xTrain, yTrain)
-    print("Finished training LR")
-    getModelMetrics(xTrain, yTrain, myLR, "LR", training=True)
-    print("Finished displaying training metrics for LR")
-    getModelMetrics(xTest, yTest, myLR, "LR", training=False)
-    print("Finished displaying testing metrics for LR")
+    if loadModel:
+        myLR = pickle.load(open("Models/LRModel.pickle", "rb"))
+        print("LR Model Loaded")
+        getModelMetrics(xTest, yTest, myLR, "LR", training=False)
+        print("Finished displaying testing metrics for loaded LR")
+    else:
+        myLR = LinearRegression()
+        myLR.fit(xTrain, yTrain)
+        print("Finished training LR")
+        getModelMetrics(xTrain, yTrain, myLR, "LR", training=True)
+        print("Finished displaying training metrics for LR")
+        getModelMetrics(xTest, yTest, myLR, "LR", training=False)
+        print("Finished displaying testing metrics for newly-trained LR")
+        pickle.dump(myLR, open("Models/LRModel.pickle", "wb"))
+        print("LR Model Saved")
 
 def printLRCoeffSig(xTrain, yTrain, LR, xColumns):
     yTrain = [arr[0] for arr in yTrain]
@@ -146,20 +155,29 @@ def plotLRResiduals(xTrain, yTrain, LR):
     yTrain = np.array(yTrain)
     plots.plot_residuals(LR, xTrain, yTrain, r_type="standardized")
 
-def trainEvalRF():
-    myRF = RandomForestRegressor(warm_start=True)
+def trainEvalRF(loadModel=False):
     pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
-    myRF.fit(pre2020xTrain, pre2020yTrain.values.ravel())
-    print("Finished training RF with pre2020 data")
-    getModelMetrics(pre2020xTrain, pre2020yTrain, myRF, "RF", training=True)
-    getModelMetrics(pre2020xTest, pre2020yTest, myRF, "RF", training=False)
-    print("Now training RF with 2020->beyond data")
-    myRF.n_estimators += 100
-    myRF.fit(post2020xTrain, post2020yTrain.values.ravel())
-    print("Finished training RF with post2020 data")
     xTrain, xTest, yTrain, yTest = pd.concat([pre2020xTrain, post2020xTrain]), pd.concat([pre2020xTest, post2020xTest]), pd.concat([pre2020yTrain, post2020yTrain]), pd.concat([pre2020yTest, post2020yTest])
-    getModelMetrics(xTrain, yTrain, myRF, "RF", training=True)
-    getModelMetrics(xTest, yTest, myRF, "RF", training=False)
+    if loadModel:
+        myRF = pickle.load(open("Models/RFModel.pickle", "rb"))
+        print("RF Model Loaded")
+        getModelMetrics(xTest, yTest, myRF, "RF", training=False)
+        print("Finished displaying testing metrics for loaded RF")
+    else:
+        myRF = RandomForestRegressor(warm_start=True)
+        myRF.fit(pre2020xTrain, pre2020yTrain.values.ravel())
+        print("Finished training RF with pre2020 data")
+        getModelMetrics(pre2020xTrain, pre2020yTrain, myRF, "RF", training=True)
+        getModelMetrics(pre2020xTest, pre2020yTest, myRF, "RF", training=False)
+        print("Now training RF with 2020->beyond data")
+        myRF.n_estimators += 100
+        myRF.fit(post2020xTrain, post2020yTrain.values.ravel())
+        print("Finished training RF with post2020 data")
+        getModelMetrics(xTrain, yTrain, myRF, "RF", training=True)
+        getModelMetrics(xTest, yTest, myRF, "RF", training=False)
+        print("Finished displaying testing metrics for newly-trained RF")
+        pickle.dump(myRF, open("Models/RFModel.pickle", "wb"))
+        print("RF Model Saved")
 
 '''
 Upon searching around for auto hyperparameter setting, came across keras-tuner
@@ -167,37 +185,47 @@ After doing some reading to understand how it works, I found this article to be 
 https://www.analyticsvidhya.com/blog/2021/06/keras-tuner-auto-neural-network-architecture-selection/
 '''
 
-def newTrainEvalNN():
+def newTrainEvalNN(loadModel=False):
     if os.path.exists("nnProject"):
         shutil.rmtree("nnProject")
         print("Old NN project deleted")
     pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
     xTrain, xTest, yTrain, yTest = pd.concat([pre2020xTrain, post2020xTrain]), pd.concat([pre2020xTest, post2020xTest]), pd.concat([pre2020yTrain, post2020yTrain]), pd.concat([pre2020yTest, post2020yTest])
-    tuner = RandomSearch(
-    buildNN,
-    objective = 'val_loss',
-    max_trials = 200,
-    executions_per_trial = 2,
-    directory = "nnProject",
-    project_name = "NN"
-    )
-    # print(tuner.search_space_summary())
-    tuner.search(xTrain, yTrain, epochs=100, validation_data=(xTest, yTest))
-    print(tuner.results_summary())
-    # es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
-    myNN = tuner.hypermodel.build(tuner.get_best_hyperparameters()[0])
-    history = myNN.fit(
-    xTrain, yTrain,
-    validation_data=(xTest, yTest),
-    batch_size=32,
-    epochs=100,
-    verbose=0, # decided to make verbose to follow the training, feel free to set to 0
-    #callbacks=[es]
-    )
-    print("Finished training NN")
-    getModelMetrics(xTrain, yTrain, myNN, "NN", training=True)
-    getModelMetrics(xTest, yTest, myNN, "NN", training=False)
-    print(myNN.summary())
+    if loadModel:
+        myNN = keras.models.load_model("Models/NNModel.h5")
+        print("Loaded NN")
+        getModelMetrics(xTest, yTest, myNN, "NN", training=False)
+        print(myNN.summary())
+        print("Finished displaying testing metrics for loaded NN")
+    else:
+        tuner = RandomSearch(
+        buildNN,
+        objective = 'val_loss',
+        max_trials = 300,
+        executions_per_trial = 3,
+        directory = "nnProject",
+        project_name = "NN"
+        )
+        # print(tuner.search_space_summary())
+        tuner.search(xTrain, yTrain, epochs=100, validation_data=(xTest, yTest))
+        print(tuner.results_summary())
+        # es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
+        myNN = tuner.hypermodel.build(tuner.get_best_hyperparameters()[0])
+        history = myNN.fit(
+        xTrain, yTrain,
+        validation_data=(xTest, yTest),
+        batch_size=32,
+        epochs=100,
+        verbose=0, # decided to make verbose to follow the training, feel free to set to 0
+        #callbacks=[es]
+        )
+        print("Finished training NN")
+        getModelMetrics(xTrain, yTrain, myNN, "NN", training=True)
+        getModelMetrics(xTest, yTest, myNN, "NN", training=False)
+        print(myNN.summary())
+        print("Finished displaying testing metrics for newly-trained NN")
+        myNN.save("Models/NNModel.h5")
+        print("NN Model Saved")
 
 def buildNN(hp):
     myNN = keras.Sequential()
@@ -212,7 +240,7 @@ def buildNN(hp):
                     loss = 'mse', metrics = [metrics.MeanSquaredError(), metrics.MeanAbsoluteError()])
     return myNN
 
-def trainEvalRNN():
+def trainEvalRNN(loadModel=False):
     if os.path.exists("rnnProject"):
         shutil.rmtree("rnnProject")
         print("Old RNN project deleted")
@@ -227,31 +255,41 @@ def trainEvalRNN():
     rnnYTest = np.array([yTest.values[i+timestep] for i in range(len(yTest)-timestep)])
     rnnXTrain.reshape(len(rnnXTrain), timestep, 23)
     rnnXTest.reshape(len(rnnXTest), timestep, 23)
-    tuner = RandomSearch(
-    buildRNN,
-    objective = 'val_loss',
-    max_trials = 150,
-    executions_per_trial = 3,
-    directory = "rnnProject",
-    project_name = "RNN"
-    )
-    # print(tuner.search_space_summary())
-    tuner.search(rnnXTrain, rnnYTrain, epochs=100, validation_data=(rnnXTest, rnnYTest))
-    print(tuner.results_summary())
-    # es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
-    myRNN = tuner.hypermodel.build(tuner.get_best_hyperparameters()[0])
-    history = myRNN.fit(
-    rnnXTrain, rnnYTrain,
-    validation_data=(rnnXTest, rnnYTest),
-    batch_size=32,
-    epochs=100,
-    verbose=0, # decided to make verbose to follow the training, feel free to set to 0
-    #callbacks=[es]
-    )
-    print("Finished training RNN")
-    getModelMetrics(rnnXTrain, rnnYTrain, myRNN, "RNN", training=True)
-    getModelMetrics(rnnXTest, rnnYTest, myRNN, "RNN", training=False)
-    print(myRNN.summary())
+    if loadModel:
+        myRNN = keras.models.load_model("Models/RNNModel.h5")
+        print("Loaded RNN")
+        getModelMetrics(rnnXTest, rnnYTest, myRNN, "RNN", training=False)
+        print(myRNN.summary())
+        print("Finished displaying testing metrics for loaded RNN")
+    else:
+        tuner = RandomSearch(
+        buildRNN,
+        objective = 'val_loss',
+        max_trials = 300,
+        executions_per_trial = 3,
+        directory = "rnnProject",
+        project_name = "RNN"
+        )
+        # print(tuner.search_space_summary())
+        tuner.search(rnnXTrain, rnnYTrain, epochs=100, validation_data=(rnnXTest, rnnYTest))
+        print(tuner.results_summary())
+        # es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
+        myRNN = tuner.hypermodel.build(tuner.get_best_hyperparameters()[0])
+        history = myRNN.fit(
+        rnnXTrain, rnnYTrain,
+        validation_data=(rnnXTest, rnnYTest),
+        batch_size=32,
+        epochs=100,
+        verbose=0, # decided to make verbose to follow the training, feel free to set to 0
+        #callbacks=[es]
+        )
+        print("Finished training RNN")
+        getModelMetrics(rnnXTrain, rnnYTrain, myRNN, "RNN", training=True)
+        getModelMetrics(rnnXTest, rnnYTest, myRNN, "RNN", training=False)
+        print(myRNN.summary())
+        print("Finished displaying testing metrics for newly-trained RNN")
+        myRNN.save("Models/RNNModel.h5")
+        print("RNN saved")
 
 def buildRNN(hp):
     myRNN = keras.Sequential()
@@ -262,14 +300,15 @@ def buildRNN(hp):
     return myRNN
 
 def main():
+    loadModel = False
     # Try  LR on the data
-    trainEvalLR()
+    trainEvalLR(loadModel)
     # Try  RF on the data
-    trainEvalRF()
+    trainEvalRF(loadModel)
     # Try NN on the data
-    newTrainEvalNN()
+    newTrainEvalNN(loadModel)
     # Try RNN on the data
-    trainEvalRNN()
+    trainEvalRNN(loadModel)
     print("Program Done")
 
 if __name__ == "__main__":
