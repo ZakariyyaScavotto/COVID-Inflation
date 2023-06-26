@@ -81,16 +81,17 @@ def getModelMetrics(x, y, model, modelName, training=True):
     elif training==False:
         y = np.array([value[0] for value in y.tolist()])
     predictions = model.predict(x)
-    r2 = r2_score(y, predictions)
+    r2 = r2_score(y, predictions).round(3)
     adjR2 = 1 - (1-r2)*(len(y)-1)/(len(y)-x.shape[1]-1)
-    mse = mean_squared_error(y, predictions)
-    rmse = np.sqrt(mse)
+    adjR2 = adjR2.round(3)
+    mse = mean_squared_error(y, predictions).round(3)
+    rmse = np.sqrt(mse).round(3)
     predictions = predictions.reshape(predictions.size, 1)
     if training and modelName != "RNN":
-        mae = np.mean(np.abs(predictions - y)).values[0]
+        mae = np.mean(np.abs(predictions - y)).values[0].round(3)
     else:
-        mae = np.mean(np.abs(predictions - y))
-    corr = np.corrcoef(predictions.T, y.T)[0,1]
+        mae = np.mean(np.abs(predictions - y)).round(3)
+    corr = np.corrcoef(predictions.T, y.T)[0,1].round(3)
     if training:
         print("Training Metrics for "+modelName+":")
         print("R^2: "+str(r2))
