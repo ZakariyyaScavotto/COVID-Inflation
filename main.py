@@ -22,33 +22,46 @@ import pickle
 def readEconData(filename):
     return pd.read_excel(filename)
 
-def makeTrainTest(): # Train test but with breaking up between pre-2020 and 2020->beyond
+def makeTrainTest(modelName): # Train test but with breaking up between pre-2020 and 2020->beyond
     # Read econ data
     econData = readEconData("Data\ConstructedDataframes\AllEcon1990AndCOVIDWithLags.xlsx")
     # econData = readEconData("Data\ConstructedDataframes\ALLECONDATAwithLagsAndCOVIDDataANDInflationLag.xlsx")
     # econData = readEconData("Data\ConstructedDataframes\AutoregressiveSigLags.xlsx")
-    # split into pre-2020 and 2020->beyond
-    ind2020 = econData.query("Date == '2020-01-01'").index.values[0]
-    pre2020EconData, post2020EconData = econData.iloc[:ind2020].copy(), econData.iloc[ind2020:].copy()
-    # now, can remove the date column
-    pre2020EconData.drop("Date", axis=1, inplace=True)
-    post2020EconData.drop("Date", axis=1, inplace=True)
-    # now scale the data
-    scaler, scaler2 = StandardScaler(), StandardScaler()
-    pre2020EconData = pd.DataFrame(scaler.fit_transform(pre2020EconData), columns=pre2020EconData.columns)
-    post2020EconData = pd.DataFrame(scaler2.fit_transform(post2020EconData), columns=post2020EconData.columns)
-    # now need to split each into train/test
-    # split pre-2020
-    trainCutoff = int(pre2020EconData.shape[0] * 0.8) 
-    pre2020TrainDf, pre2020TestDf = pre2020EconData.iloc[:trainCutoff], pre2020EconData.iloc[trainCutoff:]
-    pre2020xTrain, pre2020yTrain = pre2020TrainDf.loc[:, pre2020TrainDf.columns != "AnnualizedMoM-CPI-Inflation"], pre2020TrainDf.loc[:, pre2020TrainDf.columns == "AnnualizedMoM-CPI-Inflation"]
-    pre2020xTest, pre2020yTest = pre2020TestDf.loc[:, pre2020TestDf.columns != "AnnualizedMoM-CPI-Inflation"], pre2020TestDf.loc[:, pre2020TestDf.columns == "AnnualizedMoM-CPI-Inflation"]
-    # Now do the same for post2020EconData
-    trainCutoff = int(post2020EconData.shape[0] * 0.8)
-    post2020TrainDf, post2020TestDf = post2020EconData.iloc[:trainCutoff], post2020EconData.iloc[trainCutoff:]
-    post2020xTrain, post2020yTrain = post2020TrainDf.loc[:, post2020TrainDf.columns != "AnnualizedMoM-CPI-Inflation"], post2020TrainDf.loc[:, post2020TrainDf.columns == "AnnualizedMoM-CPI-Inflation"]
-    post2020xTest, post2020yTest = post2020TestDf.loc[:, post2020TestDf.columns != "AnnualizedMoM-CPI-Inflation"], post2020TestDf.loc[:, post2020TestDf.columns == "AnnualizedMoM-CPI-Inflation"]
-    return pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest
+    if modelName in ["LR", "NN", "RF"]:
+        # drop the date column
+        econData.drop("Date", axis=1, inplace=True)
+        # scale the data using StandardScaler
+        scaler = StandardScaler()
+        econData = pd.DataFrame(scaler.fit_transform(econData), columns=econData.columns)
+        # split into train/test using sklearn train_test_split
+        trainDf, testDf = train_test_split(econData, test_size=0.2, random_state=42)
+        # split into x and y
+        xTrain, yTrain = trainDf.loc[:, trainDf.columns != "AnnualizedMoM-CPI-Inflation"], trainDf.loc[:, trainDf.columns == "AnnualizedMoM-CPI-Inflation"]
+        xTest, yTest = testDf.loc[:, testDf.columns != "AnnualizedMoM-CPI-Inflation"], testDf.loc[:, testDf.columns == "AnnualizedMoM-CPI-Inflation"]
+        return xTrain, yTrain, xTest, yTest
+    else:
+        # split into pre-2020 and 2020->beyond
+        ind2020 = econData.query("Date == '2020-01-01'").index.values[0]
+        pre2020EconData, post2020EconData = econData.iloc[:ind2020].copy(), econData.iloc[ind2020:].copy()
+        # now, can remove the date column
+        pre2020EconData.drop("Date", axis=1, inplace=True)
+        post2020EconData.drop("Date", axis=1, inplace=True)
+        # now scale the data
+        scaler, scaler2 = StandardScaler(), StandardScaler()
+        pre2020EconData = pd.DataFrame(scaler.fit_transform(pre2020EconData), columns=pre2020EconData.columns)
+        post2020EconData = pd.DataFrame(scaler2.fit_transform(post2020EconData), columns=post2020EconData.columns)
+        # now need to split each into train/test
+        # split pre-2020
+        trainCutoff = int(pre2020EconData.shape[0] * 0.8) 
+        pre2020TrainDf, pre2020TestDf = pre2020EconData.iloc[:trainCutoff], pre2020EconData.iloc[trainCutoff:]
+        pre2020xTrain, pre2020yTrain = pre2020TrainDf.loc[:, pre2020TrainDf.columns != "AnnualizedMoM-CPI-Inflation"], pre2020TrainDf.loc[:, pre2020TrainDf.columns == "AnnualizedMoM-CPI-Inflation"]
+        pre2020xTest, pre2020yTest = pre2020TestDf.loc[:, pre2020TestDf.columns != "AnnualizedMoM-CPI-Inflation"], pre2020TestDf.loc[:, pre2020TestDf.columns == "AnnualizedMoM-CPI-Inflation"]
+        # Now do the same for post2020EconData
+        trainCutoff = int(post2020EconData.shape[0] * 0.8)
+        post2020TrainDf, post2020TestDf = post2020EconData.iloc[:trainCutoff], post2020EconData.iloc[trainCutoff:]
+        post2020xTrain, post2020yTrain = post2020TrainDf.loc[:, post2020TrainDf.columns != "AnnualizedMoM-CPI-Inflation"], post2020TrainDf.loc[:, post2020TrainDf.columns == "AnnualizedMoM-CPI-Inflation"]
+        post2020xTest, post2020yTest = post2020TestDf.loc[:, post2020TestDf.columns != "AnnualizedMoM-CPI-Inflation"], post2020TestDf.loc[:, post2020TestDf.columns == "AnnualizedMoM-CPI-Inflation"]
+        return pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest
 
 def plotPredictions(xTest, yTest, model, modelName):
     # Plot the predictions of the model on the xTest data
@@ -73,7 +86,10 @@ def getModelMetrics(x, y, model, modelName, training=True):
     mse = mean_squared_error(y, predictions)
     rmse = np.sqrt(mse)
     predictions = predictions.reshape(predictions.size, 1)
-    mae = np.mean(np.abs(predictions - y))
+    if training and modelName != "RNN":
+        mae = np.mean(np.abs(predictions - y)).values[0]
+    else:
+        mae = np.mean(np.abs(predictions - y))
     corr = np.corrcoef(predictions.T, y.T)[0,1]
     if training:
         print("Training Metrics for "+modelName+":")
@@ -122,31 +138,50 @@ def getShapPlot(x, model, modelName):
     else:
         print("Shap Plot Error: Unsupported model to get SHAP Plot")
 
+def compileMetrics(metricsDict):
+    # compile the metrics into two dataframes, the first for training metrics and the second for testing metrics
+    # for each model, the metrics are stored in a list in the order of R^2, Adjusted R^2, MSE, RMSE, MAE, and Pearson's Correlation Coefficient
+    # for each item in metricsDict, the key is the model name and the value is the list of metrics
+    # the first 6 values are the training values, and the second 6 values are the testing values
+    trainingMetrics = pd.DataFrame(columns=["Train R^2", "Train Adjusted R^2", "Train MSE", "Train RMSE", "Train MAE", "Train Pearson's Correlation Coefficient"])
+    testingMetrics = pd.DataFrame(columns=["Test R^2", "Test Adjusted R^2", "Test MSE", "Test RMSE", "Test MAE", "Test Pearson's Correlation Coefficient"])
+    for key in metricsDict.keys():
+        trainingMetrics.loc[key] = metricsDict[key][:6]
+        testingMetrics.loc[key] = metricsDict[key][6:]
+    trainingMetrics.to_excel("Metrics/TrainingMetrics.xlsx")
+    testingMetrics.to_excel("Metrics/TestingMetrics.xlsx")
+    print("Metrics saved to Excel files")
+    return trainingMetrics, testingMetrics
+
 def trainEvalLR(loadModel=False):
-    pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
+    '''    pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
     # combine the xTrains into one dataframe, the xTests into one dataframe, the yTrains into one dataframe, and the yTests into one dataframe
     xTrain, xTest, yTrain, yTest = pd.concat([pre2020xTrain, post2020xTrain]), pd.concat([pre2020xTest, post2020xTest]), pd.concat([pre2020yTrain, post2020yTrain]), pd.concat([pre2020yTest, post2020yTest])
+    '''
+    xTrain, yTrain, xTest, yTest = makeTrainTest("LR")
     if loadModel:
         myLR = pickle.load(open("Models/LRModel.pickle", "rb"))
         print("LR Model Loaded")
-        getModelMetrics(xTest, yTest, myLR, "LR", training=False)
+        trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(xTrain, yTrain, myLR, "LR", training=True)
+        testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(xTest, yTest, myLR, "LR", training=False)
         print("Finished displaying testing metrics for loaded LR")
     else:
         myLR = LinearRegression()
         myLR.fit(xTrain, yTrain)
         print("Finished training LR")
-        getModelMetrics(xTrain, yTrain, myLR, "LR", training=True)
+        trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(xTrain, yTrain, myLR, "LR", training=True)
         print("Finished displaying training metrics for LR")
-        getModelMetrics(xTest, yTest, myLR, "LR", training=False)
+        testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(xTest, yTest, myLR, "LR", training=False)
         print("Finished displaying testing metrics for newly-trained LR")
         pickle.dump(myLR, open("Models/LRModel.pickle", "wb"))
         print("LR Model Saved")
+    return trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr, testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr
 
 def printLRCoeffSig(xTrain, yTrain, LR, xColumns):
     yTrain = [arr[0] for arr in yTrain]
     yTrain = np.array(yTrain)
-    LR.coef_ = LR.coef_[0]
-    LR.intercept_ = LR.intercept_[0]
+    # LR.coef_ = LR.coef_[0]
+    # LR.intercept_ = LR.intercept_[0]
     print(stats.summary(LR, xTrain, yTrain, xColumns))
 
 def plotLRResiduals(xTrain, yTrain, LR):
@@ -156,14 +191,19 @@ def plotLRResiduals(xTrain, yTrain, LR):
     plots.plot_residuals(LR, xTrain, yTrain, r_type="standardized")
 
 def trainEvalRF(loadModel=False):
-    pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
+    '''    pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
+    # combine the xTrains into one dataframe, the xTests into one dataframe, the yTrains into one dataframe, and the yTests into one dataframe
     xTrain, xTest, yTrain, yTest = pd.concat([pre2020xTrain, post2020xTrain]), pd.concat([pre2020xTest, post2020xTest]), pd.concat([pre2020yTrain, post2020yTrain]), pd.concat([pre2020yTest, post2020yTest])
+    '''
+    xTrain, yTrain, xTest, yTest = makeTrainTest("RF")
     if loadModel:
         myRF = pickle.load(open("Models/RFModel.pickle", "rb"))
         print("RF Model Loaded")
-        getModelMetrics(xTest, yTest, myRF, "RF", training=False)
+        trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(xTrain, yTrain, myRF, "RF", training=True)
+        testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(xTest, yTest, myRF, "RF", training=False)
         print("Finished displaying testing metrics for loaded RF")
     else:
+        '''
         myRF = RandomForestRegressor(warm_start=True)
         myRF.fit(pre2020xTrain, pre2020yTrain.values.ravel())
         print("Finished training RF with pre2020 data")
@@ -171,13 +211,18 @@ def trainEvalRF(loadModel=False):
         getModelMetrics(pre2020xTest, pre2020yTest, myRF, "RF", training=False)
         print("Now training RF with 2020->beyond data")
         myRF.n_estimators += 100
+        
         myRF.fit(post2020xTrain, post2020yTrain.values.ravel())
         print("Finished training RF with post2020 data")
-        getModelMetrics(xTrain, yTrain, myRF, "RF", training=True)
-        getModelMetrics(xTest, yTest, myRF, "RF", training=False)
+        '''
+        myRF = RandomForestRegressor()
+        myRF.fit(xTrain, yTrain.values.ravel())
+        trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(xTrain, yTrain, myRF, "RF", training=True)
+        testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(xTest, yTest, myRF, "RF", training=False)
         print("Finished displaying testing metrics for newly-trained RF")
         pickle.dump(myRF, open("Models/RFModel.pickle", "wb"))
         print("RF Model Saved")
+    return trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr, testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr
 
 '''
 Upon searching around for auto hyperparameter setting, came across keras-tuner
@@ -189,20 +234,24 @@ def newTrainEvalNN(loadModel=False):
     if os.path.exists("nnProject"):
         shutil.rmtree("nnProject")
         print("Old NN project deleted")
-    pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
+    '''    pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
+    # combine the xTrains into one dataframe, the xTests into one dataframe, the yTrains into one dataframe, and the yTests into one dataframe
     xTrain, xTest, yTrain, yTest = pd.concat([pre2020xTrain, post2020xTrain]), pd.concat([pre2020xTest, post2020xTest]), pd.concat([pre2020yTrain, post2020yTrain]), pd.concat([pre2020yTest, post2020yTest])
+    '''
+    xTrain, yTrain, xTest, yTest = makeTrainTest("NN")
     if loadModel:
         myNN = keras.models.load_model("Models/NNModel.h5")
         print("Loaded NN")
-        getModelMetrics(xTest, yTest, myNN, "NN", training=False)
+        trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(xTrain, yTrain, myNN, "NN", training=True)
+        testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(xTest, yTest, myNN, "NN", training=False)
         print(myNN.summary())
         print("Finished displaying testing metrics for loaded NN")
     else:
         tuner = RandomSearch(
         buildNN,
         objective = 'val_loss',
-        max_trials = 300,
-        executions_per_trial = 3,
+        max_trials = 10, # 300
+        executions_per_trial = 3, #3
         directory = "nnProject",
         project_name = "NN"
         )
@@ -220,12 +269,13 @@ def newTrainEvalNN(loadModel=False):
         #callbacks=[es]
         )
         print("Finished training NN")
-        getModelMetrics(xTrain, yTrain, myNN, "NN", training=True)
-        getModelMetrics(xTest, yTest, myNN, "NN", training=False)
+        trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(xTrain, yTrain, myNN, "NN", training=True)
+        testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(xTest, yTest, myNN, "NN", training=False)
         print(myNN.summary())
         print("Finished displaying testing metrics for newly-trained NN")
         myNN.save("Models/NNModel.h5")
         print("NN Model Saved")
+    return trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr, testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr
 
 def buildNN(hp):
     myNN = keras.Sequential()
@@ -244,7 +294,7 @@ def trainEvalRNN(loadModel=False):
     if os.path.exists("rnnProject"):
         shutil.rmtree("rnnProject")
         print("Old RNN project deleted")
-    pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
+    pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest("RNN")
     xTrain, xTest, yTrain, yTest = pd.concat([pre2020xTrain, post2020xTrain]), pd.concat([pre2020xTest, post2020xTest]), pd.concat([pre2020yTrain, post2020yTrain]), pd.concat([pre2020yTest, post2020yTest])
     # xTrain, xTest = xTrain.values.reshape(-1, 1, 24), xTest.values.reshape(-1, 1, 24) # reshape train/test data for RNN to work (adding time dimension)
     timestep = 3 # number of timesteps to look back
@@ -258,14 +308,15 @@ def trainEvalRNN(loadModel=False):
     if loadModel:
         myRNN = keras.models.load_model("Models/RNNModel.h5")
         print("Loaded RNN")
-        getModelMetrics(rnnXTest, rnnYTest, myRNN, "RNN", training=False)
+        trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(rnnXTrain, rnnYTrain, myRNN, "RNN", training=True)
+        testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(rnnXTest, rnnYTest, myRNN, "RNN", training=False)
         print(myRNN.summary())
         print("Finished displaying testing metrics for loaded RNN")
     else:
         tuner = RandomSearch(
         buildRNN,
         objective = 'val_loss',
-        max_trials = 300,
+        max_trials = 10, #  300
         executions_per_trial = 3,
         directory = "rnnProject",
         project_name = "RNN"
@@ -284,12 +335,13 @@ def trainEvalRNN(loadModel=False):
         #callbacks=[es]
         )
         print("Finished training RNN")
-        getModelMetrics(rnnXTrain, rnnYTrain, myRNN, "RNN", training=True)
-        getModelMetrics(rnnXTest, rnnYTest, myRNN, "RNN", training=False)
+        trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(rnnXTrain, rnnYTrain, myRNN, "RNN", training=True)
+        testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(rnnXTest, rnnYTest, myRNN, "RNN", training=False)
         print(myRNN.summary())
         print("Finished displaying testing metrics for newly-trained RNN")
         myRNN.save("Models/RNNModel.h5")
         print("RNN saved")
+    return trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr, testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr
 
 def buildRNN(hp):
     myRNN = keras.Sequential()
@@ -300,7 +352,8 @@ def buildRNN(hp):
     return myRNN
 
 def main():
-    loadModel = False
+    loadModel = True
+    '''
     # Try  LR on the data
     trainEvalLR(loadModel)
     # Try  RF on the data
@@ -308,7 +361,9 @@ def main():
     # Try NN on the data
     newTrainEvalNN(loadModel)
     # Try RNN on the data
-    trainEvalRNN(loadModel)
+    trainEvalRNN(loadModel)'''
+    metricsDict = {"LR": trainEvalLR(loadModel), "RF": trainEvalRF(loadModel), "NN": newTrainEvalNN(loadModel), "RNN": trainEvalRNN(loadModel)}
+    compileMetrics(metricsDict)
     print("Program Done")
 
 if __name__ == "__main__":
