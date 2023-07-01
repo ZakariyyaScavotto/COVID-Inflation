@@ -1,0 +1,10 @@
+keras_tuner==1.3.5
+matplotlib==3.4.3
+numpy==1.22.3
+pandas==1.3.4
+regressors==0.0.3
+scikit_learn==1.3.0
+shap==0.41.0
+statsmodels==0.14.0
+tensorflow==2.12.0
+tf_nightly==2.8.0.dev20211117
