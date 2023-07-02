@@ -20,8 +20,7 @@ from sklearn.linear_model import Lasso
 import shutil, os
 import pickle
 from functools import partial
-
-loadModel = False
+import argparse
 
 def readEconData(filename):
     return pd.read_excel(filename)
@@ -412,6 +411,19 @@ def determineRNNTimestep():
     print("BEST RNN TIMESTEP: ", bestTimestep)
 
 def main():
+    loadModel = True # default to load
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-load", help="Load models from file", action="store_true")
+    parser.add_argument("-train", help="Train models", action="store_true")
+    args = parser.parse_args()
+    if args.load:
+        print("Load argument passed")
+        loadModel = True
+    elif args.train:
+        print("Train argument passed")
+        loadModel = False
+    else:
+        print("No arguments passed, defaulting to load models")
     metricsDict = {"LR": trainEvalLR(loadModel), "RF": trainEvalRF(loadModel), "NN": newTrainEvalNN(loadModel), "RNN": trainEvalRNN(loadModel)}
     compileMetrics(metricsDict)
     # determineRNNTimestep()
