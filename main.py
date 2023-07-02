@@ -10,15 +10,18 @@ import warnings
 warnings.filterwarnings("ignore", message=".*The 'nopython' keyword.*")
 import shap
 import matplotlib.pyplot as plt
-from tensorflow import keras
-from tensorflow.keras.callbacks import EarlyStopping
-from tensorflow.keras import layers, metrics
+import tensorflow as tf
+import keras
+from keras.callbacks import EarlyStopping
+from keras import layers, metrics
 from keras_tuner.tuners import RandomSearch
 from sklearn.linear_model import Lasso
 # from regressors import stats, plots
 import shutil, os
 import pickle
 from functools import partial
+
+loadModel = False
 
 def readEconData(filename):
     return pd.read_excel(filename)
@@ -88,10 +91,7 @@ def getModelMetrics(x, y, model, modelName, training=True):
     mse = mean_squared_error(y, predictions).round(3)
     rmse = np.sqrt(mse).round(3)
     predictions = predictions.reshape(predictions.size, 1)
-    if training and modelName != "RNN":
-        mae = np.mean(np.abs(predictions - y)).values[0].round(3)
-    else:
-        mae = np.mean(np.abs(predictions - y)).round(3)
+    mae = np.mean(np.abs(predictions - y)).round(3)
     corr = np.corrcoef(predictions.T, y.T)[0,1].round(3)
     if training:
         print("Training Metrics for "+modelName+":")
@@ -412,7 +412,6 @@ def determineRNNTimestep():
     print("BEST RNN TIMESTEP: ", bestTimestep)
 
 def main():
-    loadModel = True
     metricsDict = {"LR": trainEvalLR(loadModel), "RF": trainEvalRF(loadModel), "NN": newTrainEvalNN(loadModel), "RNN": trainEvalRNN(loadModel)}
     compileMetrics(metricsDict)
     # determineRNNTimestep()
