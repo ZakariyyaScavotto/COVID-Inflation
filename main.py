@@ -15,7 +15,7 @@ from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras import layers, metrics
 from keras_tuner.tuners import RandomSearch
 from sklearn.linear_model import Lasso
-from regressors import stats, plots
+# from regressors import stats, plots
 import shutil, os
 import pickle
 from functools import partial
@@ -105,6 +105,7 @@ def getModelMetrics(x, y, model, modelName, training=True):
     print("Pearson's Correlation Coefficient: "+str(corr))
     if not training:
         plotPredictions(x, y, model, modelName)
+    '''    
     if modelName ==  "LR" and training:
         printLRCoeffSig(x, y.values.tolist(), model, x.columns)
         plotLRResiduals(x, y.values.tolist(), model)
@@ -117,6 +118,7 @@ def getModelMetrics(x, y, model, modelName, training=True):
     elif modelName == "RF" and training:
         getShapPlot(x, model, modelName)
         print("Displayed RF SHAP plot for training data")
+    '''
     return r2, adjR2, mse, rmse, mae, corr
 
 def getShapPlot(x, model, modelName):
@@ -178,7 +180,7 @@ def trainEvalLR(loadModel=False):
         pickle.dump(myLR, open("Models/LRModel.pickle", "wb"))
         print("LR Model Saved")
     return trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr, testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr
-
+'''
 def printLRCoeffSig(xTrain, yTrain, LR, xColumns):
     yTrain = [arr[0] for arr in yTrain]
     yTrain = np.array(yTrain)
@@ -191,6 +193,7 @@ def plotLRResiduals(xTrain, yTrain, LR):
         yTrain = [arr[0] for arr in yTrain]
     yTrain = np.array(yTrain)
     plots.plot_residuals(LR, xTrain, yTrain, r_type="standardized")
+'''
 
 def trainEvalRF(loadModel=False):
     '''    pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
@@ -409,7 +412,7 @@ def determineRNNTimestep():
     print("BEST RNN TIMESTEP: ", bestTimestep)
 
 def main():
-    loadModel = False
+    loadModel = True
     metricsDict = {"LR": trainEvalLR(loadModel), "RF": trainEvalRF(loadModel), "NN": newTrainEvalNN(loadModel), "RNN": trainEvalRNN(loadModel)}
     compileMetrics(metricsDict)
     # determineRNNTimestep()
