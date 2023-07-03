@@ -103,8 +103,8 @@ def getModelMetrics(x, y, model, modelName, training=True):
     print("RMSE: "+str(rmse))
     print("MAE: "+str(mae))
     print("Pearson's Correlation Coefficient: "+str(corr))
-    if not training:
-        plotPredictions(x, y, model, modelName)
+    # if not training:
+    #     plotPredictions(x, y, model, modelName)
     '''    
     if modelName ==  "LR" and training:
         printLRCoeffSig(x, y.values.tolist(), model, x.columns)
