@@ -302,7 +302,7 @@ def newTrainEvalNN(loadModel=False):
         tuner = RandomSearch(
         buildNN,
         objective = 'val_loss',
-        max_trials = 10, # 300
+        max_trials = 300, # 300
         executions_per_trial = 3, #3
         directory = "nnProject",
         project_name = "NN"
@@ -373,7 +373,7 @@ def trainEvalRNN(loadModel=False):
         tuner = RandomSearch(
         buildRNN,
         objective = 'val_loss',
-        max_trials = 10, #  300
+        max_trials = 300, #  300
         executions_per_trial = 3,
         directory = "rnnProject",
         project_name = "RNN"
