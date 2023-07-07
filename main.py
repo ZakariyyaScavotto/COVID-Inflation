@@ -22,6 +22,7 @@ import pickle
 from functools import partial
 import argparse
 from sklearn.model_selection import cross_validate, TimeSeriesSplit
+from yellowbrick.regressor.residuals import residuals_plot
 
 def readEconData(filename):
     return pd.read_excel(filename)
@@ -70,6 +71,8 @@ def makeTrainTest(modelName): # Train test but with breaking up between pre-2020
 def plotPredictions(xTest, yTest, model, modelName):
     # Plot the predictions of the model on the xTest data
     predictions = model.predict(xTest)
+    plt.cla()
+    plt.clf()
     plt.plot(predictions, label="Predictions")
     plt.plot(yTest, label="Actual")
     plt.legend()
@@ -104,10 +107,9 @@ def getModelMetrics(x, y, model, modelName, training=True):
     print("MAE: "+str(mae))
     print("Pearson's Correlation Coefficient: "+str(corr))
     if not training:
-        plotPredictions(x, y, model, modelName)
-    '''    
+        plotPredictions(x, y, model, modelName) 
     if modelName ==  "LR" and training:
-        printLRCoeffSig(x, y.values.tolist(), model, x.columns)
+        #printLRCoeffSig(x, y.values.tolist(), model, x.columns)
         plotLRResiduals(x, y.values.tolist(), model)
         print("Displayed LR residuals plot for training data")
         getShapPlot(x, model, modelName)
@@ -118,7 +120,6 @@ def getModelMetrics(x, y, model, modelName, training=True):
     elif modelName == "RF" and training:
         getShapPlot(x, model, modelName)
         print("Displayed RF SHAP plot for training data")
-    '''
     return r2, adjR2, mse, rmse, mae, corr
 
 def getShapPlot(x, model, modelName):
@@ -215,13 +216,13 @@ def printLRCoeffSig(xTrain, yTrain, LR, xColumns):
     LR.coef_ = LR.coef_[0]
     LR.intercept_ = LR.intercept_[0]
     print(stats.summary(LR, xTrain, yTrain, xColumns))
-
-def plotLRResiduals(xTrain, yTrain, LR):
-    if any(isinstance(el, np.ndarray) or isinstance(el, list) for el in yTrain):
-        yTrain = [arr[0] for arr in yTrain]
-    yTrain = np.array(yTrain)
-    plots.plot_residuals(LR, xTrain, yTrain, r_type="standardized")
 '''
+def plotLRResiduals(xTrain, yTrain, LR):
+    print("X length: " + str(len(xTrain)))
+    print("Y length: " + str(len(yTrain)))
+    if isinstance(yTrain[0], float):
+        yTrain = [[val] for val in yTrain]
+    residPlot = residuals_plot(LR, X_train=xTrain, y_train = yTrain, is_fitted=True)
 
 def trainEvalRF(loadModel=False):
     '''    pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
@@ -290,7 +291,7 @@ def newTrainEvalNN(loadModel=False):
     '''
     xTrain, yTrain, xTest, yTest = makeTrainTest("NN")
     if loadModel:
-        myNN = keras.models.load_model("Models/NNModel.h5")
+        myNN = keras.models.load_model("Models/NNModel.h5", compile=False)
         print("Loaded NN")
         trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(xTrain, yTrain, myNN, "NN", training=True)
         testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(xTest, yTest, myNN, "NN", training=False)
@@ -361,7 +362,7 @@ def trainEvalRNN(loadModel=False):
     rnnXTrain.reshape(len(rnnXTrain), timestep, 23)
     rnnXTest.reshape(len(rnnXTest), timestep, 23)
     if loadModel:
-        myRNN = keras.models.load_model("Models/RNNModel.h5")
+        myRNN = keras.models.load_model("Models/RNNModel.h5", compile=False)
         print("Loaded RNN")
         trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(rnnXTrain, rnnYTrain, myRNN, "RNN", training=True)
         testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(rnnXTest, rnnYTest, myRNN, "RNN", training=False)
