@@ -243,12 +243,6 @@ def trainEvalRF(loadModel=False):
         trainMAE = trainMAE[0]
     return cvMSE, cvRMSE, cvMAE, trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr, testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr
 
-'''
-Upon searching around for auto hyperparameter setting, came across keras-tuner
-After doing some reading to understand how it works, I found this article to be helpful in learning how to implement it
-https://www.analyticsvidhya.com/blog/2021/06/keras-tuner-auto-neural-network-architecture-selection/
-'''
-
 def newTrainEvalNN(loadModel=False):
     if os.path.exists("nnProject"):
         shutil.rmtree("nnProject")
