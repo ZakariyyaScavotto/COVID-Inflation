@@ -16,7 +16,6 @@ from keras.callbacks import EarlyStopping
 from keras import layers, metrics
 from keras_tuner.tuners import RandomSearch
 from sklearn.linear_model import Lasso
-# from regressors import stats, plots
 import shutil, os
 import pickle
 from functools import partial
@@ -71,10 +70,8 @@ def makeTrainTest(modelName): # Train test but with breaking up between pre-2020
 def plotPredictions(xTest, yTest, model, modelName):
     # Plot the predictions of the model on the xTest data
     predictions = model.predict(xTest)
-    plt.cla()
-    plt.clf()
     plt.plot(predictions, label="Predictions")
-    plt.plot(yTest, label="Actual")
+    plt.plot(yTest, label="Actual", color="orange")
     plt.legend()
     plt.title("Predictions vs Actual for "+modelName)
     plt.gcf().canvas.manager.set_window_title("Predictions vs Actual for "+modelName)
@@ -109,7 +106,6 @@ def getModelMetrics(x, y, model, modelName, training=True):
     if not training:
         plotPredictions(x, y, model, modelName) 
     if modelName ==  "LR" and training:
-        #printLRCoeffSig(x, y.values.tolist(), model, x.columns)
         plotLRResiduals(x, y.values.tolist(), model)
         print("Displayed LR residuals plot for training data")
         getShapPlot(x, model, modelName)
@@ -169,10 +165,6 @@ def compileMetrics(metricsDict, loadModel):
     return trainingMetrics, testingMetrics
 
 def trainEvalLR(loadModel=False):
-    '''    pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
-    # combine the xTrains into one dataframe, the xTests into one dataframe, the yTrains into one dataframe, and the yTests into one dataframe
-    xTrain, xTest, yTrain, yTest = pd.concat([pre2020xTrain, post2020xTrain]), pd.concat([pre2020xTest, post2020xTest]), pd.concat([pre2020yTrain, post2020yTrain]), pd.concat([pre2020yTest, post2020yTest])
-    '''
     xTrain, yTrain, xTest, yTest = makeTrainTest("LR")
     if loadModel:
         myLR = pickle.load(open("Models/LRModel.pickle", "rb"))
@@ -209,14 +201,6 @@ def trainEvalLR(loadModel=False):
             trainMAE = trainMAE[0]
         return cvMSE, cvRMSE, cvMAE, trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr, testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr
 
-'''
-def printLRCoeffSig(xTrain, yTrain, LR, xColumns):
-    yTrain = [arr[0] for arr in yTrain]
-    yTrain = np.array(yTrain)
-    LR.coef_ = LR.coef_[0]
-    LR.intercept_ = LR.intercept_[0]
-    print(stats.summary(LR, xTrain, yTrain, xColumns))
-'''
 def plotLRResiduals(xTrain, yTrain, LR):
     print("X length: " + str(len(xTrain)))
     print("Y length: " + str(len(yTrain)))
@@ -225,10 +209,6 @@ def plotLRResiduals(xTrain, yTrain, LR):
     residPlot = residuals_plot(LR, X_train=xTrain, y_train = yTrain, is_fitted=True)
 
 def trainEvalRF(loadModel=False):
-    '''    pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
-    # combine the xTrains into one dataframe, the xTests into one dataframe, the yTrains into one dataframe, and the yTests into one dataframe
-    xTrain, xTest, yTrain, yTest = pd.concat([pre2020xTrain, post2020xTrain]), pd.concat([pre2020xTest, post2020xTest]), pd.concat([pre2020yTrain, post2020yTrain]), pd.concat([pre2020yTest, post2020yTest])
-    '''
     xTrain, yTrain, xTest, yTest = makeTrainTest("RF")
     if loadModel:
         myRF = pickle.load(open("Models/RFModel.pickle", "rb"))
@@ -240,18 +220,6 @@ def trainEvalRF(loadModel=False):
             trainMAE = trainMAE[0]
         return trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr, testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr
     else:
-        '''
-        myRF = RandomForestRegressor(warm_start=True)
-        myRF.fit(pre2020xTrain, pre2020yTrain.values.ravel())
-        print("Finished training RF with pre2020 data")
-        getModelMetrics(pre2020xTrain, pre2020yTrain, myRF, "RF", training=True)
-        getModelMetrics(pre2020xTest, pre2020yTest, myRF, "RF", training=False)
-        print("Now training RF with 2020->beyond data")
-        myRF.n_estimators += 100
-        
-        myRF.fit(post2020xTrain, post2020yTrain.values.ravel())
-        print("Finished training RF with post2020 data")
-        '''
         myRF = RandomForestRegressor()
         # Perform cross validation
         print("Performing cross validation for RF")
@@ -285,10 +253,6 @@ def newTrainEvalNN(loadModel=False):
     if os.path.exists("nnProject"):
         shutil.rmtree("nnProject")
         print("Old NN project deleted")
-    '''    pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest()
-    # combine the xTrains into one dataframe, the xTests into one dataframe, the yTrains into one dataframe, and the yTests into one dataframe
-    xTrain, xTest, yTrain, yTest = pd.concat([pre2020xTrain, post2020xTrain]), pd.concat([pre2020xTest, post2020xTest]), pd.concat([pre2020yTrain, post2020yTrain]), pd.concat([pre2020yTest, post2020yTest])
-    '''
     xTrain, yTrain, xTest, yTest = makeTrainTest("NN")
     if loadModel:
         myNN = keras.models.load_model("Models/NNModel.h5", compile=False)
