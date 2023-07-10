@@ -17,7 +17,8 @@ def readEconData(filename):
 
 def makeTrainTest(combo): # Train test but with breaking up between pre-2020 and 2020->beyond
     # Read econ data
-    econData = readEconData("Data\ConstructedDataframes\AllEcon1990AndCOVIDWithLags.xlsx")
+    # econData = readEconData("Data\ConstructedDataframes\AllEcon1990AndCOVIDWithLags.xlsx")
+    econData = readEconData("Data\ConstructedDataframes\AutoregressiveAllLags.xlsx")
     # drop the date column
     econData.drop("Date", axis=1, inplace=True)
     # scale the data using StandardScaler
@@ -140,8 +141,8 @@ def trainEvalRF(combo):
     return cvMSE, cvRMSE, cvMAE, trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr, testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr
 
 def main():
-    LRcombos = pd.read_excel("RFE/LR.xlsx")
-    RFcombos = pd.read_excel("RFE/RF.xlsx")
+    LRcombos = pd.read_excel("RFE/AutoRegressiveLR.xlsx")
+    RFcombos = pd.read_excel("RFE/AutoRegressiveRF.xlsx")
     # drop the first column from each dataframe
     LRcombos.drop(LRcombos.columns[0], axis=1, inplace=True)
     RFcombos.drop(RFcombos.columns[0], axis=1, inplace=True)
@@ -158,8 +159,8 @@ def main():
     # sort the train and test metrics so the LR metrics rows are next to each other and all the RF metrics rows are next to each other
     trainMetrics = trainMetrics.sort_index()
     testMetrics = testMetrics.sort_index()
-    trainMetrics.to_excel("RFEMetrics/ALLTrainingMetrics.xlsx")
-    testMetrics.to_excel("RFEMetrics/ALLTestingMetrics.xlsx")
+    trainMetrics.to_excel("RFEMetrics/ALLAutoRegressiveTrainingMetrics.xlsx")
+    testMetrics.to_excel("RFEMetrics/ALLAutoRegressiveTestingMetrics.xlsx")
     print("Program done")
 
 if __name__ == "__main__":

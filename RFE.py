@@ -9,7 +9,8 @@ def readEconData(filename):
 
 def makeXY(): 
     # Read econ data
-    econData = readEconData("Data\ConstructedDataframes\AllEcon1990AndCOVIDWithLags.xlsx")
+    # econData = readEconData("Data\ConstructedDataframes\AllEcon1990AndCOVIDWithLags.xlsx")
+    econData = readEconData("Data\ConstructedDataframes\AutoregressiveAllLags.xlsx")
     # drop the date column
     econData.drop("Date", axis=1, inplace=True)
     # scale the data using StandardScaler
@@ -62,8 +63,8 @@ def main():
             elif model == "RF":
                 # Have the supported features for RF be 1 if supported, 0 if not
                 RF.loc[minFeature] = [1 if feature in supported else 0 for feature in x.columns]
-    LR.to_excel("RFE\\LR.xlsx")
-    RF.to_excel("RFE\\RF.xlsx")
+    LR.to_excel("RFE\\AutoRegressiveLR.xlsx")
+    RF.to_excel("RFE\\AutoRegressiveRF.xlsx")
     print("Program Done")
 
 if __name__ == "__main__":
