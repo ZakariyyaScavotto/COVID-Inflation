@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 import keras
 from keras.callbacks import EarlyStopping
-from keras import layers, metrics
+from keras import layers, metrics, Sequential, models, regularizers
 from keras_tuner.tuners import RandomSearch
 from sklearn.linear_model import Lasso
 import shutil, os
@@ -22,6 +22,8 @@ from functools import partial
 import argparse
 from sklearn.model_selection import cross_validate, TimeSeriesSplit
 from yellowbrick.regressor.residuals import residuals_plot
+from scikeras.wrappers import KerasRegressor
+from sklearn.ensemble import VotingRegressor
 
 def readEconData(filename):
     return pd.read_excel(filename)
@@ -29,9 +31,7 @@ def readEconData(filename):
 def makeTrainTest(modelName): # Train test but with breaking up between pre-2020 and 2020->beyond
     # Read econ data
     econData = readEconData("Data\ConstructedDataframes\AllEcon1990AndCOVIDWithLags.xlsx")
-    # econData = readEconData("Data\ConstructedDataframes\ALLECONDATAwithLagsAndCOVIDDataANDInflationLag.xlsx")
-    # econData = readEconData("Data\ConstructedDataframes\AutoregressiveSigLags.xlsx")
-    if modelName in ["LR", "NN", "RF"]:
+    if modelName in ["LR", "NN", "RF", "Ensemble"]:
         # drop the date column
         econData.drop("Date", axis=1, inplace=True)
         # scale the data using StandardScaler
@@ -249,7 +249,7 @@ def newTrainEvalNN(loadModel=False):
         print("Old NN project deleted")
     xTrain, yTrain, xTest, yTest = makeTrainTest("NN")
     if loadModel:
-        myNN = keras.models.load_model("Models/NNModel.h5", compile=False)
+        myNN = models.load_model("Models/NNModel.h5", compile=False)
         print("Loaded NN")
         trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(xTrain, yTrain, myNN, "NN", training=True)
         testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(xTest, yTest, myNN, "NN", training=False)
@@ -292,12 +292,12 @@ def newTrainEvalNN(loadModel=False):
     return trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr, testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr
 
 def buildNN(hp):
-    myNN = keras.Sequential()
+    myNN = Sequential()
     myNN.add(layers.Dense(units = 24, activation='relu', input_shape=[23]))
     for i in range(hp.Int('layers', 1, 5)):
         myNN.add(layers.Dense(units=hp.Int('units_' + str(i), 2, 60, step=2),
                                         activation=hp.Choice('act_' + str(i), ['relu', 'sigmoid']),
-                                        kernel_regularizer=keras.regularizers.l2(hp.Choice('l2_' + str(i), [0.01, 0.001, 0.0001]))))
+                                        kernel_regularizer=regularizers.l2(hp.Choice('l2_' + str(i), [0.01, 0.001, 0.0001]))))
         myNN.add(layers.Dropout(hp.Float('dropout_' + str(i), 0.2, 0.7, step=0.05)))
     myNN.add(layers.Dense(1))
     myNN.compile(optimizer=tf.keras.optimizers.Adam(hp.Choice('learning_rate', values=[1e-2, 1e-4])),
@@ -320,7 +320,7 @@ def trainEvalRNN(loadModel=False):
     rnnXTrain.reshape(len(rnnXTrain), timestep, 23)
     rnnXTest.reshape(len(rnnXTest), timestep, 23)
     if loadModel:
-        myRNN = keras.models.load_model("Models/RNNModel.h5", compile=False)
+        myRNN = models.load_model("Models/RNNModel.h5", compile=False)
         print("Loaded RNN")
         trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(rnnXTrain, rnnYTrain, myRNN, "RNN", training=True)
         testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(rnnXTest, rnnYTest, myRNN, "RNN", training=False)
@@ -362,7 +362,7 @@ def trainEvalRNN(loadModel=False):
     return trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr, testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr
 
 def buildRNN(hp):
-    myRNN = keras.Sequential()
+    myRNN = Sequential()
     myRNN.add(layers.SimpleRNN(units = hp.Int('units', 1, 60), activation='relu', input_shape=(12,23), dropout = (hp.Float('dropout', 0.2, 0.7, step=0.05)), recurrent_dropout = (hp.Float('recurDropout' , 0.2, 0.7, step=0.05)),return_sequences=False))
     myRNN.add(layers.Dense(1))
     myRNN.compile(optimizer=tf.keras.optimizers.Adam(hp.Choice('learning_rate', values=[1e-2, 1e-4])),
@@ -370,7 +370,7 @@ def buildRNN(hp):
     return myRNN
 
 def buildRNNTime(time, hp):
-    myRNN = keras.Sequential()
+    myRNN = Sequential()
     myRNN.add(layers.SimpleRNN(units = hp.Int('units', 1, 60), activation='relu', input_shape=(time,23), dropout = (hp.Float('dropout', 0.2, 0.7, step=0.05)), recurrent_dropout = (hp.Float('recurDropout' , 0.2, 0.7, step=0.05)),return_sequences=False))
     myRNN.add(layers.Dense(1))
     myRNN.compile(optimizer=tf.keras.optimizers.Adam(hp.Choice('learning_rate', values=[1e-2, 1e-4])),
@@ -424,6 +424,47 @@ def determineRNNTimestep():
             bestTimestep = timestep
     print("BEST RNN TIMESTEP: ", bestTimestep)
 
+def makeModel(myNN):
+    NN = Sequential()
+    for count, layer in enumerate(myNN.layers):
+        if count == 0:
+            NN.add(layers.Dense(layer.units, activation=layer.activation, input_shape=[23]))
+        elif "dense" in layer.name:
+            NN.add(layers.Dense(layer.units, activation=layer.activation))
+        else:
+            NN.add(layers.Dropout(layer.rate))
+    NN.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.0001), loss = 'mse', metrics = [metrics.MeanSquaredError(), metrics.MeanAbsoluteError()])
+    return NN
+
+def trainEvalEnsemble(loadModel):
+    xTrain, yTrain, xTest, yTest = makeTrainTest("Ensemble")
+    # Load in the individual models
+    if loadModel:
+        myLR = pickle.load(open("Models/EnsembleModel.pickle", "rb"))
+        print("Ensemble Model Loaded")
+        trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(xTrain, yTrain, myLR, "Ensemble", training=True)
+        testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(xTest, yTest, myLR, "Ensemble", training=False)
+        print("Finished displaying testing metrics for loaded Ensemble")
+        if isinstance(trainMAE, pd.Series):
+            trainMAE = trainMAE[0]
+    else:
+        myLR = pickle.load(open("Models/LRModel.pickle", "rb"))
+        myRF = pickle.load(open("Models/RFModel.pickle", "rb"))
+        myNN = tf.keras.models.load_model("Models/NNModel.h5")
+        sciNN = KerasRegressor(model = makeModel(myNN), epochs=100, batch_size=32, verbose=0, optimizer="adam")
+        myEnsemble = VotingRegressor(estimators=[('LR', myLR), ('RF', myRF), ('NN', sciNN)])
+        myEnsemble.fit(xTrain, yTrain)
+        print("Finished training ensemble")
+        trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(xTrain, yTrain, myEnsemble, "Ensemble", training=True)
+        print("Displayed training metrics for ensemble")
+        testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(xTest, yTest, myEnsemble, "Ensemble", training=False)
+        print("Displayed testing metrics for ensemble")
+        pickle.dump(myEnsemble, open("Models/EnsembleModel.pickle", "wb"))
+        print("Saved ensemble model")
+        if isinstance(trainMAE, pd.Series):
+            trainMAE = trainMAE[0]
+    return trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr, testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr
+
 def main():
     loadModel = True # default to load
     parser = argparse.ArgumentParser()
@@ -440,7 +481,8 @@ def main():
         print("No arguments passed, defaulting to load models value of ", loadModel)
     metricsDict = {"LR": trainEvalLR(loadModel), "RF": trainEvalRF(loadModel), "NN": newTrainEvalNN(loadModel), "RNN": trainEvalRNN(loadModel)}
     compileMetrics(metricsDict, loadModel)
-    # determineRNNTimestep()
+    print("Individual models done, moving on to the ensemble")
+    metricsDict = {"Ensemble": trainEvalEnsemble(loadModel)}
     print("Program Done")
 
 if __name__ == "__main__":
