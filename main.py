@@ -479,10 +479,8 @@ def main():
         loadModel = False
     else:
         print("No arguments passed, defaulting to load models value of ", loadModel)
-    metricsDict = {"LR": trainEvalLR(loadModel), "RF": trainEvalRF(loadModel), "NN": newTrainEvalNN(loadModel), "RNN": trainEvalRNN(loadModel)}
+    metricsDict = {"LR": trainEvalLR(loadModel), "RF": trainEvalRF(loadModel), "NN": newTrainEvalNN(loadModel), "RNN": trainEvalRNN(loadModel), "Ensemble": trainEvalEnsemble(loadModel)}
     compileMetrics(metricsDict, loadModel)
-    print("Individual models done, moving on to the ensemble")
-    metricsDict = {"Ensemble": trainEvalEnsemble(loadModel)}
     print("Program Done")
 
 if __name__ == "__main__":
