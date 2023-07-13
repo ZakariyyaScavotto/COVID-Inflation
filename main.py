@@ -243,7 +243,7 @@ def trainEvalRF(loadModel=False):
         trainMAE = trainMAE[0]
     return cvMSE, cvRMSE, cvMAE, trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr, testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr
 
-def newTrainEvalNN(loadModel=False):
+def trainEvalNN(loadModel=False):
     if os.path.exists("nnProject"):
         shutil.rmtree("nnProject")
         print("Old NN project deleted")
@@ -267,7 +267,7 @@ def newTrainEvalNN(loadModel=False):
         project_name = "NN"
         )
         # print(tuner.search_space_summary())
-        tuner.search(xTrain, yTrain, epochs=100, validation_data=(xTest, yTest))
+        tuner.search(xTrain, yTrain, epochs=100, validation_data=(xTest, yTest), callbacks=[EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=10)])
         print(tuner.results_summary())
         # es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
         myNN = tuner.hypermodel.build(tuner.get_best_hyperparameters()[0])
@@ -338,7 +338,7 @@ def trainEvalRNN(loadModel=False):
         project_name = "RNN"
         )
         # print(tuner.search_space_summary())
-        tuner.search(rnnXTrain, rnnYTrain, epochs=100, validation_data=(rnnXTest, rnnYTest))
+        tuner.search(rnnXTrain, rnnYTrain, epochs=100, validation_data=(rnnXTest, rnnYTest), callbacks=[EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=10)])
         print(tuner.results_summary())
         # es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
         myRNN = tuner.hypermodel.build(tuner.get_best_hyperparameters()[0])
@@ -479,7 +479,7 @@ def main():
         loadModel = False
     else:
         print("No arguments passed, defaulting to load models value of ", loadModel)
-    metricsDict = {"LR": trainEvalLR(loadModel), "RF": trainEvalRF(loadModel), "NN": newTrainEvalNN(loadModel), "RNN": trainEvalRNN(loadModel), "Ensemble": trainEvalEnsemble(loadModel)}
+    metricsDict = {"LR": trainEvalLR(loadModel), "RF": trainEvalRF(loadModel), "NN": trainEvalNN(loadModel), "RNN": trainEvalRNN(loadModel), "Ensemble": trainEvalEnsemble(loadModel)}
     compileMetrics(metricsDict, loadModel)
     print("Program Done")
 

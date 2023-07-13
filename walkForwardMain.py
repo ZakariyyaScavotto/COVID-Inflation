@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 import keras
 from keras.callbacks import EarlyStopping
-from keras import layers, metrics
+from keras import layers, metrics, Sequential, models, regularizers
 from keras_tuner.tuners import RandomSearch
 from sklearn.linear_model import Lasso
 import shutil, os
@@ -22,6 +22,9 @@ from functools import partial
 import argparse
 from sklearn.model_selection import cross_validate, TimeSeriesSplit
 from yellowbrick.regressor.residuals import residuals_plot
+from scikeras.wrappers import KerasRegressor
+from sklearn.ensemble import VotingRegressor
+
 
 def readEconData(filename):
     return pd.read_excel(filename)
@@ -232,13 +235,13 @@ def newTrainEvalNN(window, testWindow, loadModel=False):
         tuner = RandomSearch(
         buildNN,
         objective = 'val_loss',
-        max_trials = 300, # 300
+        max_trials = 200, # 300
         executions_per_trial = 3, #3
         directory = "nnProject",
         project_name = "NN"
         )
         # print(tuner.search_space_summary())
-        tuner.search(xTrain, yTrain, epochs=100, validation_data=(xTest, yTest))
+        tuner.search(xTrain, yTrain, epochs=100, validation_data=(xTest, yTest), callbacks=[EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=10)])
         print(tuner.results_summary())
         # es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
         myNN = tuner.hypermodel.build(tuner.get_best_hyperparameters()[0])
@@ -248,7 +251,6 @@ def newTrainEvalNN(window, testWindow, loadModel=False):
         batch_size=32,
         epochs=100,
         verbose=0, # decided to make verbose to follow the training, feel free to set to 0
-        #callbacks=[es]
         )
         print("Finished training NN")
         trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(xTrain, yTrain, myNN, "NN", training=True)
@@ -302,13 +304,13 @@ def trainEvalRNN(window, testWindow, loadModel=False):
         tuner = RandomSearch(
         buildRNN,
         objective = 'val_loss',
-        max_trials = 300, #  300
+        max_trials = 200, #  300
         executions_per_trial = 3,
         directory = "rnnProject",
         project_name = "RNN"
         )
         # print(tuner.search_space_summary())
-        tuner.search(rnnXTrain, rnnYTrain, epochs=100, validation_data=(rnnXTest, rnnYTest))
+        tuner.search(rnnXTrain, rnnYTrain, epochs=100, validation_data=(rnnXTest, rnnYTest), callbacks=[EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=10)])
         print(tuner.results_summary())
         # es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
         myRNN = tuner.hypermodel.build(tuner.get_best_hyperparameters()[0])
@@ -347,52 +349,47 @@ def buildRNNTime(time, hp):
                     loss = 'mse', metrics = [metrics.MeanSquaredError(), metrics.MeanAbsoluteError()])
     return myRNN
 
-def determineRNNTimestep():
-    pre2020xTrain, pre2020yTrain, pre2020xTest, pre2020yTest, post2020xTrain, post2020yTrain, post2020xTest, post2020yTest = makeTrainTest("RNN")
-    xTrain, xTest, yTrain, yTest = pd.concat([pre2020xTrain, post2020xTrain]), pd.concat([pre2020xTest, post2020xTest]), pd.concat([pre2020yTrain, post2020yTrain]), pd.concat([pre2020yTest, post2020yTest])
-    # xTrain, xTest = xTrain.values.reshape(-1, 1, 24), xTest.values.reshape(-1, 1, 24) # reshape train/test data for RNN to work (adding time dimension)
-    bestTimestep = -1
-    bestRMSE= 999999.9999999999
-    for timestep in range(3, 13):
-        if os.path.exists("rnnProject"):
-            shutil.rmtree("rnnProject")
-            print("Old RNN project deleted")
-        # Split the xTrain and xTeset into rolling windows of size timestep, and have yTrain and yTest be the next value
-        rnnXTrain = np.array([xTrain[i:i+timestep] for i in range(len(xTrain)-timestep)])
-        rnnXTest = np.array([xTest[i:i+timestep] for i in range(len(xTest)-timestep)])
-        rnnYTrain = np.array([yTrain.values[i+timestep] for i in range(len(yTrain)-timestep)])
-        rnnYTest = np.array([yTest.values[i+timestep] for i in range(len(yTest)-timestep)])
-        rnnXTrain.reshape(len(rnnXTrain), timestep, 23)
-        rnnXTest.reshape(len(rnnXTest), timestep, 23)
-        # buildRNNModel = partial(buildRNN, time=timestep)
-        tuner = RandomSearch(
-        lambda hp : buildRNNTime(timestep, hp),
-        objective = 'val_loss',
-        max_trials = 200, #  300
-        executions_per_trial = 3,
-        directory = "rnnProject",
-        project_name = "RNN"
-        )
-        # print(tuner.search_space_summary())
-        tuner.search(rnnXTrain, rnnYTrain, epochs=100, validation_data=(rnnXTest, rnnYTest))
-        print(tuner.results_summary())
-        # es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
-        myRNN = tuner.hypermodel.build(tuner.get_best_hyperparameters()[0])
-        history = myRNN.fit(
-        rnnXTrain, rnnYTrain,
-        validation_data=(rnnXTest, rnnYTest),
-        batch_size=32,
-        epochs=100,
-        verbose=0, # decided to make verbose to follow the training, feel free to set to 0
-        #callbacks=[es]
-        )
-        print("Finished training RNN")
-        trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(rnnXTrain, rnnYTrain, myRNN, "RNN", training=True)
-        testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(rnnXTest, rnnYTest, myRNN, "RNN", training=False)
-        if testRMSE < bestRMSE:
-            bestRMSE = testRMSE
-            bestTimestep = timestep
-    print("BEST RNN TIMESTEP: ", bestTimestep)
+def makeModel(myNN):
+    NN = Sequential()
+    for count, layer in enumerate(myNN.layers):
+        if count == 0:
+            NN.add(layers.Dense(layer.units, activation=layer.activation, input_shape=[23]))
+        elif "dense" in layer.name:
+            NN.add(layers.Dense(layer.units, activation=layer.activation))
+        else:
+            NN.add(layers.Dropout(layer.rate))
+    NN.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.0001), loss = 'mse', metrics = [metrics.MeanSquaredError(), metrics.MeanAbsoluteError()])
+    return NN
+
+def trainEvalEnsemble(window, testWindow, loadModel=False):
+    xTrain, yTrain, xTest, yTest = makeTrainTest("Ensemble", window, testWindow)
+    # Load in the individual models
+    if loadModel:
+        myLR = pickle.load(open("Models/EnsembleModel.pickle", "rb"))
+        print("Ensemble Model Loaded")
+        trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(xTrain, yTrain, myLR, "Ensemble", training=True)
+        testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(xTest, yTest, myLR, "Ensemble", training=False)
+        print("Finished displaying testing metrics for loaded Ensemble")
+        if isinstance(trainMAE, pd.Series):
+            trainMAE = trainMAE[0]
+    else:
+        myLR = pickle.load(open("Models/LRModel.pickle", "rb"))
+        myRF = pickle.load(open("Models/RFModel.pickle", "rb"))
+        myNN = tf.keras.models.load_model("Models/NNModel.h5")
+        sciNN = KerasRegressor(model = makeModel(myNN), epochs=100, batch_size=32, verbose=0, optimizer="adam")
+        myEnsemble = VotingRegressor(estimators=[('LR', myLR), ('RF', myRF), ('NN', sciNN)])
+        myEnsemble.fit(xTrain, yTrain)
+        print("Finished training ensemble")
+        trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(xTrain, yTrain, myEnsemble, "Ensemble", training=True)
+        print("Displayed training metrics for ensemble")
+        testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(xTest, yTest, myEnsemble, "Ensemble", training=False)
+        print("Displayed testing metrics for ensemble")
+        pickle.dump(myEnsemble, open("Models/EnsembleModel.pickle", "wb"))
+        print("Saved ensemble model")
+        if isinstance(trainMAE, pd.Series):
+            trainMAE = trainMAE[0]
+    return trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr, testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr
+
 
 def main():
     loadModel = False # default to load
@@ -408,10 +405,10 @@ def main():
         loadModel = False
     else:
         print("No arguments passed, defaulting to load models value of ", loadModel)
-    trainWindowSize, testWindowSize = [192,220,248,276,304], 76
+    trainWindowSize, testWindowSize = [340 + 2*i for i in range(18)], 2
     trainMetrics, testMetrics = [], []
     for window in trainWindowSize:
-        metricsDict = {"LR"+str(window): trainEvalLR(window,testWindowSize, loadModel), "RF"+str(window): trainEvalRF(window, testWindowSize, loadModel), "NN"+str(window): newTrainEvalNN(window, testWindowSize, loadModel), "RNN"+str(window): trainEvalRNN(window, testWindowSize, loadModel)}
+        metricsDict = {"LR"+str(window): trainEvalLR(window,testWindowSize, loadModel), "RF"+str(window): trainEvalRF(window, testWindowSize, loadModel), "NN"+str(window): newTrainEvalNN(window, testWindowSize, loadModel), "Ensemble"+str(window): trainEvalEnsemble(window, testWindowSize, loadModel)}
         # metricsDict = {"RNN"+str(window): trainEvalRNN(window, testWindowSize, loadModel)}
         train, test = compileMetrics(metricsDict, loadModel)
         trainMetrics.append(train)
@@ -429,8 +426,11 @@ def main():
     trainMetrics.loc['NNavg'] = trainMetrics.loc[trainMetrics.index.str.contains("NN")].mean()
     testMetrics.loc['NNavg'] = testMetrics.loc[testMetrics.index.str.contains("NN")].mean()
     # add a row at the end which is the average of each column for rows containing "RNN"
-    trainMetrics.loc['RNNavg'] = trainMetrics.loc[trainMetrics.index.str.contains("RNN")].mean()
-    testMetrics.loc['RNNavg'] = testMetrics.loc[testMetrics.index.str.contains("RNN")].mean()
+    # trainMetrics.loc['RNNavg'] = trainMetrics.loc[trainMetrics.index.str.contains("RNN")].mean()
+    # testMetrics.loc['RNNavg'] = testMetrics.loc[testMetrics.index.str.contains("RNN")].mean()
+    # add a row at the end which is the average of each column for rows containing "Ensemble"
+    trainMetrics.loc['Ensembleavg'] = trainMetrics.loc[trainMetrics.index.str.contains("Ensemble")].mean()
+    testMetrics.loc['Ensembleavg'] = testMetrics.loc[testMetrics.index.str.contains("Ensemble")].mean()
     # save them to file
     trainMetrics.to_excel("Metrics/rollingTrainMetrics.xlsx")
     testMetrics.to_excel("Metrics/rollingTestMetrics.xlsx")
