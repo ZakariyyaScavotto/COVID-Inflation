@@ -28,7 +28,7 @@ def readEconData(filename):
 
 def makeTrainTest(modelName): # Train test but with breaking up between pre-2020 and 2020->beyond
     # Read econ data
-    econData = readEconData("Data\ConstructedDataframes\AllEcon1990AndCOVIDWithLags.xlsx")
+    econData = readEconData(r"Data/ConstructedDataframes/AllEcon1990AndCOVIDWithLags.xlsx")
     # econData = readEconData("Data\ConstructedDataframes\ALLECONDATAwithLagsAndCOVIDDataANDInflationLag.xlsx")
     # econData = readEconData("Data\ConstructedDataframes\AutoregressiveSigLags.xlsx")
     if modelName in ["LR", "NN", "RF"]:
