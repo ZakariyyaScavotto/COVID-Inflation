@@ -59,12 +59,12 @@ def generateNonAvgPlots(df, filename):
     dates = getDates()
     # Change the dates to only being the month and year
     dates = [date.strftime("%b-%Y") for date in dates]
-    axs[0].set_xticks(np.arange(0, len(dates), 6))
-    axs[0].set_xticklabels(dates[::6], rotation=45)
-    axs[1].set_xticks(np.arange(0, len(dates), 6))
-    axs[1].set_xticklabels(dates[::6], rotation=45)
-    axs[2].set_xticks(np.arange(0, len(dates), 6))
-    axs[2].set_xticklabels(dates[::6], rotation=45)
+    axs[0].set_xticks(np.arange(0, len(dates), 4))
+    axs[0].set_xticklabels(dates[::4], rotation=45)
+    axs[1].set_xticks(np.arange(0, len(dates), 4))
+    axs[1].set_xticklabels(dates[::4], rotation=45)
+    axs[2].set_xticks(np.arange(0, len(dates), 4))
+    axs[2].set_xticklabels(dates[::4], rotation=45)
     axs[0].tick_params(axis='x', labelsize=8)
     axs[1].tick_params(axis='x', labelsize=8)
     axs[2].tick_params(axis='x', labelsize=8)
