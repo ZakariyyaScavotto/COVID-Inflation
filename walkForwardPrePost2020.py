@@ -24,7 +24,7 @@ from sklearn.model_selection import cross_validate, TimeSeriesSplit
 from yellowbrick.regressor.residuals import residuals_plot
 from scikeras.wrappers import KerasRegressor
 from sklearn.ensemble import VotingRegressor
-
+from generateMetricPlots import mainPlotting
 
 def readEconData(filename):
     return pd.read_excel(filename)
@@ -147,8 +147,19 @@ def compileMetrics(metricsDict):
             testingMetrics.loc[key] = list(metricsDict[key][6:])
     return trainingMetrics, testingMetrics
 
+def getSampleWeights(numSamples, testWindow):
+    c = 50
+    if numSamples >= 200:
+        weightsList = [i for i in range(1, numSamples+1)]
+    else:
+        weightsList = [i for i in range(1, testWindow+1)]
+    s = sum(weightsList)
+    sampleWeights = [w * (c/s) for w in weightsList]
+    return sampleWeights
+
 def trainEvalLR(window, testWindow, loadModel=False):
     xTrain, yTrain, xTest, yTest = makeTrainTest("LR", window, testWindow)
+    sampleWeights = getSampleWeights(window, testWindow)
     if loadModel:
         myLR = pickle.load(open("Models/LRModel.pickle", "rb"))
         print("LR Model Loaded")
@@ -172,7 +183,7 @@ def trainEvalLR(window, testWindow, loadModel=False):
         print("RMSE: " + str(cvRMSE))
         print("MAE: " + str(cvMAE))
         print("Finished displaying cross validation scores for LR")
-        myLR.fit(xTrain, yTrain)
+        myLR.fit(xTrain, yTrain, sample_weight=sampleWeights)
         print("Finished training LR")
         trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(xTrain, yTrain, myLR, "LR", training=True)
         print("Finished displaying training metrics for LR")
@@ -193,6 +204,7 @@ def plotLRResiduals(xTrain, yTrain, LR):
 
 def trainEvalRF(window, testWindow, loadModel=False):
     xTrain, yTrain, xTest, yTest = makeTrainTest("RF", window, testWindow)
+    sampleWeights = getSampleWeights(window, testWindow)
     if loadModel:
         myRF = pickle.load(open("Models/RFModel.pickle", "rb"))
         print("RF Model Loaded")
@@ -216,7 +228,7 @@ def trainEvalRF(window, testWindow, loadModel=False):
         print("RMSE: " + str(cvRMSE))
         print("MAE: " + str(cvMAE))
         print("Finished displaying cross validation scores for RF")
-        myRF.fit(xTrain, yTrain.values.ravel())
+        myRF.fit(xTrain, yTrain.values.ravel(), sample_weight=sampleWeights)
         trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(xTrain, yTrain, myRF, "RF", training=True)
         testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(xTest, yTest, myRF, "RF", training=False)
         print("Finished displaying testing metrics for newly-trained RF")
@@ -226,13 +238,26 @@ def trainEvalRF(window, testWindow, loadModel=False):
         trainMAE = trainMAE[0]
     return cvMSE, cvRMSE, cvMAE, trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr, testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr
 
+# Reference: https://stackoverflow.com/questions/62393032/custom-loss-function-with-weights-in-keras
+def myMSE(weights):
+    def mseCalcs(y_true, y_pred):
+        error = y_true-y_pred
+        return keras.backend.mean(keras.backend.square(error) + keras.backend.sqrt(weights))
+    return mseCalcs
+
 def trainEvalNN(window, testWindow, loadModel=False):
     if os.path.exists("nnProject"):
         shutil.rmtree("nnProject")
         print("Old NN project deleted")
     xTrain, yTrain, xTest, yTest = makeTrainTest("NN", window, testWindow, secondTime=loadModel)
+    if not loadModel:
+        sampleWeights = tf.constant((pd.Series(getSampleWeights(window, testWindow))), dtype=tf.float32)
+    else:
+        sampleWeights = tf.constant((pd.Series(getSampleWeights(testWindow, testWindow))), dtype=tf.float32)
     if loadModel:
-        myNN = keras.models.load_model("Models/NNModel.h5")
+        # myNN = keras.models.load_model("Models/NNModel.h5", custom_objects={'loss': myMSE(sampleWeights)})
+        myNN = keras.models.load_model("Models/NNModel.h5", compile=False)
+        myNN.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.0001), loss = myMSE(sampleWeights), weighted_metrics = [metrics.MeanSquaredError(), metrics.MeanAbsoluteError()])
         print("Loaded NN")
         history = myNN.fit(
         xTrain, yTrain,
@@ -240,6 +265,7 @@ def trainEvalNN(window, testWindow, loadModel=False):
         batch_size=32,
         epochs=100,
         verbose=0, # decided to make verbose to follow the training, feel free to set to 0
+        sample_weight=sampleWeights
         )
         trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(xTrain, yTrain, myNN, "NN", training=True)
         testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(xTest, yTest, myNN, "NN", training=False)
@@ -251,7 +277,7 @@ def trainEvalNN(window, testWindow, loadModel=False):
             trainMAE = trainMAE[0]
     else:
         tuner = RandomSearch(
-        buildNN,
+        lambda hp: buildNN(sampleWeights, hp),
         objective = 'val_loss',
         max_trials = 300, # 300
         executions_per_trial = 3, #3
@@ -259,7 +285,7 @@ def trainEvalNN(window, testWindow, loadModel=False):
         project_name = "NN"
         )
         # print(tuner.search_space_summary())
-        tuner.search(xTrain, yTrain, epochs=100, validation_data=(xTest, yTest), callbacks=[EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=10)])
+        tuner.search(xTrain, yTrain, epochs=100, validation_data=(xTest, yTest), callbacks=[EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=10)], sample_weight = sampleWeights)
         print(tuner.results_summary())
         # es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
         myNN = tuner.hypermodel.build(tuner.get_best_hyperparameters()[0])
@@ -269,6 +295,7 @@ def trainEvalNN(window, testWindow, loadModel=False):
         batch_size=32,
         epochs=100,
         verbose=0, # decided to make verbose to follow the training, feel free to set to 0
+        sample_weight = sampleWeights
         )
         print("Finished training NN")
         trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(xTrain, yTrain, myNN, "NN", training=True)
@@ -282,7 +309,7 @@ def trainEvalNN(window, testWindow, loadModel=False):
         trainMAE = trainMAE[0]
     return trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr, testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr
 
-def buildNN(hp):
+def buildNN(sampleWeights, hp):
     myNN = keras.Sequential()
     myNN.add(layers.Dense(units = 24, activation='relu', input_shape=[23]))
     for i in range(hp.Int('layers', 1, 5)):
@@ -292,7 +319,7 @@ def buildNN(hp):
         myNN.add(layers.Dropout(hp.Float('dropout_' + str(i), 0.2, 0.7, step=0.05)))
     myNN.add(layers.Dense(1))
     myNN.compile(optimizer=tf.keras.optimizers.Adam(hp.Choice('learning_rate', values=[1e-2, 1e-4])),
-                    loss = 'mse', metrics = [metrics.MeanSquaredError(), metrics.MeanAbsoluteError()])
+                    loss = myMSE(sampleWeights), weighted_metrics = [metrics.MeanSquaredError(), metrics.MeanAbsoluteError()])
     return myNN
 
 def trainEvalRNN(window, testWindow, loadModel=False):
@@ -300,6 +327,7 @@ def trainEvalRNN(window, testWindow, loadModel=False):
         shutil.rmtree("rnnProject")
         print("Old RNN project deleted")
     xTrain, yTrain, xTest, yTest = makeTrainTest("RNN", window, testWindow, secondTime=loadModel)
+    sampleWeights = tf.constant((pd.Series(getSampleWeights(window, testWindow))), dtype=tf.float32)
     # xTrain, xTest = xTrain.values.reshape(-1, 1, 24), xTest.values.reshape(-1, 1, 24) # reshape train/test data for RNN to work (adding time dimension)
     timestep = 12 # number of timesteps to look back
     # Split the xTrain and xTeset into rolling windows of size timestep, and have yTrain and yTest be the next value
@@ -309,8 +337,16 @@ def trainEvalRNN(window, testWindow, loadModel=False):
     rnnYTest = np.array([yTest.values[i] for i in range(len(yTest))])
     rnnXTrain.reshape(len(rnnXTrain), timestep, 23)
     rnnXTest.reshape(len(rnnXTest), timestep, 23)
+    if not loadModel:
+        sampleWeights = tf.constant((pd.Series(getSampleWeights(window, testWindow))), dtype=tf.float32)
+    else:
+        sampleWeights = tf.constant((pd.Series(getSampleWeights(testWindow, testWindow))), dtype=tf.float32)
+    if len(sampleWeights) > len(rnnXTrain):
+        sampleWeights = sampleWeights[:len(rnnXTrain)]
     if loadModel:
-        myRNN = keras.models.load_model("Models/RNNModel.h5")
+        # myRNN = keras.models.load_model("Models/RNNModel.h5", custom_objects={'loss': myMSE(sampleWeights)})
+        myRNN = keras.models.load_model("Models/RNNModel.h5", compile=False)
+        myRNN.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.0001), loss = myMSE(sampleWeights), weighted_metrics = [metrics.MeanSquaredError(), metrics.MeanAbsoluteError()])
         print("Loaded RNN")
         history = myRNN.fit(
         rnnXTrain, rnnYTrain,
@@ -318,7 +354,7 @@ def trainEvalRNN(window, testWindow, loadModel=False):
         batch_size=32,
         epochs=100,
         verbose=0, # decided to make verbose to follow the training, feel free to set to 0
-        #callbacks=[es]
+        sample_weight=sampleWeights
         )
         trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(rnnXTrain, rnnYTrain, myRNN, "RNN", training=True)
         testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(rnnXTest, rnnYTest, myRNN, "RNN", training=False)
@@ -330,7 +366,7 @@ def trainEvalRNN(window, testWindow, loadModel=False):
             trainMAE = trainMAE[0]
     else:
         tuner = RandomSearch(
-        buildRNN,
+        lambda hp: buildRNN(sampleWeights, hp),
         objective = 'val_loss',
         max_trials = 300, #  300
         executions_per_trial = 3,
@@ -338,7 +374,7 @@ def trainEvalRNN(window, testWindow, loadModel=False):
         project_name = "RNN"
         )
         # print(tuner.search_space_summary())
-        tuner.search(rnnXTrain, rnnYTrain, epochs=100, validation_data=(rnnXTest, rnnYTest), callbacks=[EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=10)])
+        tuner.search(rnnXTrain, rnnYTrain, epochs=100, validation_data=(rnnXTest, rnnYTest), callbacks=[EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=10)], sample_weight = sampleWeights)
         print(tuner.results_summary())
         # es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
         myRNN = tuner.hypermodel.build(tuner.get_best_hyperparameters()[0])
@@ -348,7 +384,7 @@ def trainEvalRNN(window, testWindow, loadModel=False):
         batch_size=32,
         epochs=100,
         verbose=0, # decided to make verbose to follow the training, feel free to set to 0
-        #callbacks=[es]
+        sample_weight = sampleWeights
         )
         print("Finished training RNN")
         trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(rnnXTrain, rnnYTrain, myRNN, "RNN", training=True)
@@ -361,12 +397,12 @@ def trainEvalRNN(window, testWindow, loadModel=False):
             trainMAE = trainMAE[0]
     return trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr, testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr
 
-def buildRNN(hp):
+def buildRNN(sampleWeights, hp):
     myRNN = keras.Sequential()
     myRNN.add(layers.SimpleRNN(units = hp.Int('units', 1, 60), activation='relu', input_shape=(12,23), dropout = (hp.Float('dropout', 0.2, 0.7, step=0.05)), recurrent_dropout = (hp.Float('recurDropout' , 0.2, 0.7, step=0.05)),return_sequences=False))
     myRNN.add(layers.Dense(1))
     myRNN.compile(optimizer=tf.keras.optimizers.Adam(hp.Choice('learning_rate', values=[1e-2, 1e-4])),
-                    loss = 'mse', metrics = [metrics.MeanSquaredError(), metrics.MeanAbsoluteError()])
+                    loss = myMSE(sampleWeights), weighted_metrics = [metrics.MeanSquaredError(), metrics.MeanAbsoluteError()])
     return myRNN
 
 def makeModel(myNN):
@@ -383,6 +419,7 @@ def makeModel(myNN):
 
 def trainEvalEnsemble(window, testWindow, loadModel=False):
     xTrain, yTrain, xTest, yTest = makeTrainTest("Ensemble", window, testWindow)
+    sampleWeights = getSampleWeights(window, testWindow)
     # Load in the individual models
     if loadModel:
         myLR = pickle.load(open("Models/EnsembleModel.pickle", "rb"))
@@ -395,10 +432,11 @@ def trainEvalEnsemble(window, testWindow, loadModel=False):
     else:
         myLR = pickle.load(open("Models/LRModel.pickle", "rb"))
         myRF = pickle.load(open("Models/RFModel.pickle", "rb"))
-        myNN = tf.keras.models.load_model("Models/NNModel.h5")
+        myNN = keras.models.load_model("Models/NNModel.h5", compile=False)
+        myNN.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.0001), loss = myMSE(sampleWeights), weighted_metrics = [metrics.MeanSquaredError(), metrics.MeanAbsoluteError()])
         sciNN = KerasRegressor(model = makeModel(myNN), epochs=100, batch_size=32, verbose=0, optimizer="adam")
         myEnsemble = VotingRegressor(estimators=[('LR', myLR), ('RF', myRF), ('NN', sciNN)])
-        myEnsemble.fit(xTrain, yTrain)
+        myEnsemble.fit(xTrain, yTrain, sample_weight=sampleWeights)
         print("Finished training ensemble")
         trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr = getModelMetrics(xTrain, yTrain, myEnsemble, "Ensemble", training=True)
         print("Displayed training metrics for ensemble")
@@ -414,23 +452,23 @@ def main():
     loadModel = False
     pre2020trainWindowSize, pre2020testWindowSize = [200 + 10*i for i in range(15)], 10
     pre2020trainMetrics, pre2020testMetrics = [], []
-    post2020trainWindowSize, post2020testWindowSize = [340 + 2*i for i in range(19)], 2
+    post2020trainWindowSize, post2020testWindowSize = [342 + 2*i for i in range(18)], 2
     post2020trainMetrics, post2020testMetrics = [], []
     for count, window in enumerate(pre2020trainWindowSize):
         if count == 0:
-            metricsDict = {"LR"+str(window): trainEvalLR(window,pre2020testWindowSize, loadModel), "RF"+str(window): trainEvalRF(window, pre2020testWindowSize, loadModel), "NN"+str(window): trainEvalNN(window, pre2020testWindowSize, loadModel), "RNN": trainEvalRNN(window, pre2020testWindowSize, loadModel) ,"Ensemble"+str(window): trainEvalEnsemble(window, pre2020testWindowSize, loadModel)}
+            metricsDict = {"LR"+str(window): trainEvalLR(window,pre2020testWindowSize, loadModel), "RF"+str(window): trainEvalRF(window, pre2020testWindowSize, loadModel), "NN"+str(window): trainEvalNN(window, pre2020testWindowSize, loadModel), "RNN": trainEvalRNN(window, pre2020testWindowSize, loadModel), "Ensemble": trainEvalEnsemble(window, pre2020testWindowSize, loadModel) }
             # metricsDict = {"NN"+str(window): trainEvalNN(window, pre2020testWindowSize, loadModel)}
             train, test = compileMetrics(metricsDict)
             pre2020trainMetrics.append(train)
             pre2020testMetrics.append(test)
         else:
-            metricsDict = {"LR"+str(window): trainEvalLR(window,pre2020testWindowSize, loadModel), "RF"+str(window): trainEvalRF(window, pre2020testWindowSize, loadModel), "NN"+str(window): trainEvalNN(window, pre2020testWindowSize, loadModel=True), "RNN": trainEvalRNN(window, pre2020testWindowSize, loadModel=True) ,"Ensemble"+str(window): trainEvalEnsemble(window, pre2020testWindowSize, loadModel)}
+            metricsDict = {"LR"+str(window): trainEvalLR(window,pre2020testWindowSize, loadModel), "RF"+str(window): trainEvalRF(window, pre2020testWindowSize, loadModel), "NN"+str(window): trainEvalNN(window, pre2020testWindowSize, loadModel=True), "RNN": trainEvalRNN(window, pre2020testWindowSize, loadModel=True), "Ensemble": trainEvalEnsemble(window, pre2020testWindowSize, loadModel) }
             # metricsDict = {"NN"+str(window): trainEvalNN(window, pre2020testWindowSize, loadModel=True)}
             train, test = compileMetrics(metricsDict)
             pre2020trainMetrics.append(train)
             pre2020testMetrics.append(test)
     for count, window in enumerate(post2020trainWindowSize):
-        metricsDict = {"LR"+str(window): trainEvalLR(window,post2020testWindowSize, loadModel), "RF"+str(window): trainEvalRF(window, post2020testWindowSize, loadModel), "NN"+str(window): trainEvalNN(window, post2020testWindowSize, loadModel=True), "RNN": trainEvalRNN(window, post2020testWindowSize, loadModel=True) ,"Ensemble"+str(window): trainEvalEnsemble(window, post2020testWindowSize, loadModel)}
+        metricsDict = {"LR"+str(window): trainEvalLR(window,post2020testWindowSize, loadModel), "RF"+str(window): trainEvalRF(window, post2020testWindowSize, loadModel), "NN"+str(window): trainEvalNN(window, post2020testWindowSize, loadModel=True), "RNN": trainEvalRNN(window, post2020testWindowSize, loadModel=True), "Ensemble": trainEvalEnsemble(window, post2020testWindowSize, loadModel) }
         # metricsDict = {"NN"+str(window): trainEvalNN(window, pre2020testWindowSize, loadModel=True)}
         train, test = compileMetrics(metricsDict)
         post2020trainMetrics.append(train)
@@ -576,6 +614,7 @@ def main():
     train.to_excel("Metrics/rollingTrainMetrics.xlsx")
     test.to_excel("Metrics/rollingTestMetrics.xlsx")
     print("Program Done")
+    mainPlotting()
 
 if __name__ == "__main__":
     main()
