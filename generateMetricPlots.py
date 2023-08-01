@@ -7,7 +7,10 @@ def readMetricFile(filename, train=False):
     # set the index to be the first columnn
     df.set_index(df.columns[0], inplace=True)
     if train:
-        df.drop(columns=['cvMSE', 'cvRMSE','cvMAE',	'Train R^2','Train Adjusted R^2',"Train Pearson's Correlation Coefficient"], inplace=True)
+        if 'Multi' not in filename:
+            df.drop(columns=['cvMSE', 'cvRMSE','cvMAE',	'Train R^2','Train Adjusted R^2',"Train Pearson's Correlation Coefficient"], inplace=True)
+        else:
+            df.drop(columns=['Train R^2','Train Adjusted R^2',"Train Pearson's Correlation Coefficient"], inplace=True)
     else:
         df.drop(columns=["Test R^2",'Test Adjusted R^2',"Test Pearson's Correlation Coefficient"], inplace=True)
     return df
@@ -142,7 +145,8 @@ def generateAvgPlots(df, filename):
     fig.savefig('Metrics/Plots/'+filename.replace('.xlsx', 'Avg.png').replace('Metrics/',''))
 
 def mainPlotting():
-    filesToRead = ['Metrics/rollingTestMetrics.xlsx', 'Metrics/rollingTrainMetrics.xlsx', 'PossibleRemoveMetrics/rollingTestMetrics.xlsx', 'PossibleRemoveMetrics/rollingTrainMetrics.xlsx']
+    filesToRead = ['Metrics/rollingTestMetrics.xlsx', 'Metrics/rollingTrainMetrics.xlsx', 'PossibleRemoveMetrics/rollingTestMetrics.xlsx', 'PossibleRemoveMetrics/rollingTrainMetrics.xlsx',
+                   'MultioutputMetrics/rollingTestMetrics.xlsx', 'MultioutputMetrics/rollingTrainMetrics.xlsx']
     for metricFile in filesToRead:
         if 'Train' in metricFile:
             train = True
