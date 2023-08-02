@@ -146,7 +146,8 @@ def generateAvgPlots(df, filename):
 
 def mainPlotting():
     filesToRead = ['Metrics/rollingTestMetrics.xlsx', 'Metrics/rollingTrainMetrics.xlsx', 'PossibleRemoveMetrics/rollingTestMetrics.xlsx', 'PossibleRemoveMetrics/rollingTrainMetrics.xlsx',
-                   'MultioutputMetrics/rollingTestMetrics.xlsx', 'MultioutputMetrics/rollingTrainMetrics.xlsx']
+                   'MultioutputMetrics/rollingTestMetrics.xlsx', 'MultioutputMetrics/rollingTrainMetrics.xlsx',
+                   'Brent3COVIDMetrics/rollingTestMetrics.xlsx', 'Brent3COVIDMetrics/rollingTrainMetrics.xlsx']
     for metricFile in filesToRead:
         if 'Train' in metricFile:
             train = True
@@ -157,4 +158,5 @@ def mainPlotting():
         generateAvgPlots(avgs, metricFile)
     print('Plotting Program Done')
 
-mainPlotting()
+if __name__ == '__main__':
+    mainPlotting()
