@@ -242,7 +242,7 @@ def trainEvalRF(window, testWindow, loadModel=False):
 def myMSE(weights):
     def mseCalcs(y_true, y_pred):
         error = y_true-y_pred
-        return keras.backend.mean(keras.backend.square(error) + keras.backend.sqrt(weights))
+        return keras.backend.mean(keras.backend.square(error) * keras.backend.sqrt(weights))
     return mseCalcs
 
 def trainEvalNN(window, testWindow, loadModel=False):
