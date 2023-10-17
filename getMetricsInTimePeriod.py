@@ -56,17 +56,24 @@ def makeTrainTest(modelName, start, end): # Make X, Y for predictions
         x, y = econData.loc[:, econData.columns != "AnnualizedMoM-CPI-Inflation"], econData.loc[:, econData.columns == "AnnualizedMoM-CPI-Inflation"]
         return x, y
 
-def plotPredictions(xTest, yTest, model, modelName):
+def plotPredictions(xTest, yTest, model, modelName,start,end):
     # Plot the predictions of the model on the xTest data
     predictions = model.predict(xTest)
     plt.plot(predictions, label="Predictions")
     plt.plot(yTest, label="Actual", color="orange")
     plt.legend()
     plt.title("Predictions vs Actual for "+modelName)
+    # Set the x axis to be the dates monthly, labeling every four months starting from start and ending at end
+    dates = pd.date_range(start=start, end=end, freq="MS")
+    # Set dates to be in the format of Month-Year
+    dates = [date.strftime("%m-%Y") for date in dates]
+    plt.xticks(np.arange(0, len(dates), 4), dates[::4], rotation=45)
+    # Set the y-axis label to be the change in inflation
+    plt.ylabel("Change in Annualized Month-over-month Inflation Rate")
     plt.gcf().canvas.manager.set_window_title("Predictions vs Actual for "+modelName)
     plt.show()
 
-def getModelMetrics(x, y, model, modelName, training=True):
+def getModelMetrics(x, y, model, modelName,start,end, training=True):
     # Get the R^2, Adjusted R^2, MSE, RMSE, MAE, and Pearson's Correlation Coefficent for the model
     # check if y is a numpy.ndarray
     if training==False and not(y.__class__ == np.ndarray):
@@ -93,7 +100,7 @@ def getModelMetrics(x, y, model, modelName, training=True):
     print("MAE: "+str(mae))
     print("Pearson's Correlation Coefficient: "+str(corr))
     if not training:
-        plotPredictions(x, y, model, modelName) 
+        plotPredictions(x, y, model, modelName, start,end) 
     # if modelName ==  "LR" and training:
     #     plotLRResiduals(x, y.values.tolist(), model)
     #     print("Displayed LR residuals plot for training data")
@@ -145,7 +152,7 @@ def trainEvalLR(start, end, loadModel=True):
     if loadModel:
         myLR = pickle.load(open("Models/LRModel.pickle", "rb"))
         print("LR Model Loaded")
-        testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(xTest, yTest, myLR, "LR", training=False)
+        testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(xTest, yTest, myLR, "LR",start,end, training=False)
         print("Finished displaying testing metrics for loaded LR")
         if isinstance(testMAE, pd.Series):
             testMAE = testMAE[0]
@@ -163,7 +170,7 @@ def trainEvalRF(start, end, loadModel=True):
     if loadModel:
         myRF = pickle.load(open("Models/RFModel.pickle", "rb"))
         print("RF Model Loaded")
-        testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(xTest, yTest, myRF, "RF", training=False)
+        testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(xTest, yTest, myRF, "RF",start,end, training=False)
         print("Finished displaying testing metrics for loaded RF")
         if isinstance(testMAE, pd.Series):
             testMAE = testMAE[0]
@@ -174,7 +181,7 @@ def trainEvalNN(start, end, loadModel=True):
     if loadModel:
         myNN = keras.models.load_model("Models/NNModel.h5")
         print("Loaded NN")
-        testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(xTest, yTest, myNN, "NN", training=False)
+        testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(xTest, yTest, myNN, "NN", start,end,training=False)
         print(myNN.summary())
         print("Finished displaying testing metrics for loaded NN")
         if isinstance(testMAE, pd.Series):
@@ -192,7 +199,7 @@ def trainEvalRNN(start, end, loadModel=True):
     if loadModel:
         myRNN = keras.models.load_model("Models/RNNModel.h5")
         print("Loaded RNN")
-        testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(rnnXTest, rnnYTest, myRNN, "RNN", training=False)
+        testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(rnnXTest, rnnYTest, myRNN, "RNN",start,end, training=False)
         print(myRNN.summary())
         print("Finished displaying testing metrics for loaded RNN")
         if isinstance(testMAE, pd.Series):
@@ -205,7 +212,7 @@ def trainEvalEnsemble(start, end, loadModel=True):
     if loadModel:
         myLR = pickle.load(open("Models/EnsembleModel.pickle", "rb"))
         print("Ensemble Model Loaded")
-        testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(xTest, yTest, myLR, "Ensemble", training=False)
+        testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(xTest, yTest, myLR, "Ensemble",start,end, training=False)
         print("Finished displaying testing metrics for loaded Ensemble")
         if isinstance(testMAE, pd.Series):
             testMAE = testMAE[0]
@@ -215,11 +222,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start", help="Starting month year in format month_year, both as numbers",  required=True)
     parser.add_argument("--end", help="Ending month year in format month_year, both as numbers", required=True)
-    args = parser.parse_args()
-    startDateTime = datetime.strptime(args.start, "%m_%Y")
-    endDateTime = datetime.strptime(args.end, "%m_%Y")
-    # startDateTime = datetime.strptime("1_2020", "%m_%Y")
-    # endDateTime = datetime.strptime("3_2023", "%m_%Y")
+    # args = parser.parse_args()
+    #startDateTime = datetime.strptime(args.start, "%m_%Y")
+    #endDateTime = datetime.strptime(args.end, "%m_%Y")
+    startDateTime = datetime.strptime("1_2018", "%m_%Y")
+    endDateTime = datetime.strptime("3_2023", "%m_%Y")
     # set each date's time to be 12:00:00 AM
     startDateTime = startDateTime.replace(hour=0, minute=0, second=0, microsecond=0)
     endDateTime = endDateTime.replace(hour=0, minute=0, second=0, microsecond=0)

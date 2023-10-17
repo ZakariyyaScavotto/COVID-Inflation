@@ -1,0 +1,1 @@
+Best config is: {'numDenseLayers': 4, 'dropout': 0.85, 'batch_size': 32, 'lr': 0.00017794921112643833, 'a': 23, 'a1': 23, 'a2': 92, 'a3': 69, 'window': 200, 'testWindow': 10, 'loadModel': False}
