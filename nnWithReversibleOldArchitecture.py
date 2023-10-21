@@ -10,7 +10,6 @@ import pandas as pd
 import numpy as np
 from sklearn.metrics import r2_score, mean_squared_error
 from sklearn.preprocessing import StandardScaler
-from pandatorch.data import DataFrame
 from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
@@ -50,7 +49,7 @@ def readEconData(filename):
 def makeTrainTest(modelName, window, testWindow, secondTime=False): # Train test but with breaking up between pre-2020 and 2020->beyond
     # Read econ data
     # econData = readEconData("Data/ConstructedDataframes/AllEcon1990AndCOVIDWithLags.xlsx")
-    econData = readEconData("C:/Users/Owner/OneDrive/Documents/CodingProjectsStuff/2023SummerResearch-Inflation/COVID-Inflation/Data/ConstructedDataframes/AllEcon1990AndCOVIDWithLags.xlsx")
+    econData = readEconData("C:/Users/zs811/OneDrive/Documents/CodingProjectsStuff/2023SummerResearch-Inflation/COVID-Inflation/Data/ConstructedDataframes/AllEcon1990AndCOVIDWithLags.xlsx")
     # drop the date column
     econData.drop("Date", axis=1, inplace=True)
     # scale the data using StandardScaler

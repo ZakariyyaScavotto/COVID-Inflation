@@ -10,14 +10,13 @@ import pandas as pd
 import numpy as np
 from sklearn.metrics import r2_score, mean_squared_error
 from sklearn.preprocessing import StandardScaler
-from pandatorch.data import DataFrame
 from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
 import os
 
 class nnWithReversible(nn.Module):
-    def __init__(self, numDenseLayers=3, dropout=0.5, a=23, a1=23, a2=23, a3=23):
+    def __init__(self, numDen=3, dropout=0.5, a=23, a1=23, a2=23, a3=23):
         super(nnWithReversible, self).__init__()
         self.revInLayer = RevIN(23)
         self.dense1 = nn.Linear(23, a)
@@ -28,7 +27,7 @@ class nnWithReversible(nn.Module):
         self.a2ToRev = nn.Linear(a2, 23)
         self.a3ToRev = nn.Linear(a3, 23)
         self.denseOut = nn.Linear(23, 1)
-        self.numDenseLayers = numDenseLayers
+        self.numDen = numDen
         self.dropout = dropout
         self.a1 = a1
         self.a2 = a2
@@ -40,16 +39,16 @@ class nnWithReversible(nn.Module):
         x = self.revInLayer(x, 'norm')
         # Add the initial dense layer
         # x = F.relu(self.dense1(x))
-        # for i in range(self.numDenseLayers):
+        # for i in range(self.numDen):
         #     x = F.relu(self.dense1(x))
         #     x = nn.Dropout(p=self.dropout)(x)
-        if (self.numDenseLayers == 2):
+        if (self.numDen == 2):
             x = F.relu(self.dense1(x))
             x = nn.Dropout(p=self.dropout)(x)
             x = F.relu(self.dense2(x))
             x = nn.Dropout(p=self.dropout)(x)
             x = F.relu(self.a1ToRev(x)) # convert for RevIn
-        elif (self.numDenseLayers == 3):
+        elif (self.numDen == 3):
             x = F.relu(self.dense1(x))
             x = nn.Dropout(p=self.dropout)(x)
             x = F.relu(self.dense2(x))
@@ -57,7 +56,7 @@ class nnWithReversible(nn.Module):
             x = F.relu(self.dense3(x))
             x = nn.Dropout(p=self.dropout)(x)
             x = F.relu(self.a2ToRev(x)) # convert for RevIn
-        elif (self.numDenseLayers == 4):
+        elif (self.numDen == 4):
             x = F.relu(self.dense1(x))
             x = nn.Dropout(p=self.dropout)(x)
             x = F.relu(self.dense2(x))
@@ -80,7 +79,7 @@ def readEconData(filename):
 def makeTrainTest(modelName, window, testWindow, secondTime=False): # Train test but with breaking up between pre-2020 and 2020->beyond
     # Read econ data
     # econData = readEconData("Data/ConstructedDataframes/AllEcon1990AndCOVIDWithLags.xlsx")
-    econData = readEconData("C:/Users/Owner/OneDrive/Documents/CodingProjectsStuff/2023SummerResearch-Inflation/COVID-Inflation/Data/ConstructedDataframes/AllEcon1990AndCOVIDWithLags.xlsx")
+    econData = readEconData("C:/Users/zs811/OneDrive/Documents/CodingProjectsStuff/2023SummerResearch-Inflation/COVID-Inflation/Data/ConstructedDataframes/AllEcon1990AndCOVIDWithLags.xlsx")
     # drop the date column
     econData.drop("Date", axis=1, inplace=True)
     # scale the data using StandardScaler
@@ -236,14 +235,16 @@ def get_data_loaders(window, testWindow,batchSize, loadModel=False):
 def train_mnist(config):
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
-    train_loader, test_loader = get_data_loaders(config["window"], config["testWindow"],config["batch_size"], config["loadModel"])
-    model = nnWithReversible(numDenseLayers=config["numDenseLayers"], dropout=config["dropout"], a=config["a"], a1=config["a1"], a2=config["a2"], a3=config["a3"]).to(device)
+    train_loader, test_loader = get_data_loaders(config["win"], config["testWin"],config["batch"], config["load"])
+    model = nnWithReversible(numDen=config["numDen"], dropout=config["drop"], a=config["a"], a1=config["a1"], a2=config["a2"], a3=config["a3"]).to(device)
     optimizer = optim.SGD(model.parameters(), lr=config["lr"])
     while True:
         train(model, optimizer, train_loader, device)
         acc = test(model, test_loader, device)
         # Set this to run Tune.
-        tune.report(mean_loss=acc) # if you want to evaluate loss, change it to mean_loss and set the mode in tune.run to min instead
+        # metrics = {"mean_loss": acc}
+        # ray.train.report(metrics) # if you want to evaluate loss, change it to mean_loss and set the mode in tune.run to min instead
+        tune.report(mean_loss = acc)
 
 
 def trainEvalNN(window, testWindow, loadModel=False):
@@ -270,21 +271,21 @@ def trainEvalNN(window, testWindow, loadModel=False):
                         "gpu": 1
                 },
             num_samples=200, # num trials
-            config = {"numDenseLayers": tune.choice([2,3,4]), 
-                "dropout": tune.choice([0.3, 0.5,0.7,0.85]),
-                "batch_size": tune.choice([8,16,32]),
+            config = {"numDen": tune.choice([2,3,4]), 
+                "drop": tune.choice([0.3, 0.5,0.7,0.85]),
+                "batch": tune.choice([8,16,32]),
                 "lr": tune.loguniform(1e-4, 1e-1),
                 "a": tune.choice([23, 46, 69, 92]),
                 "a1": tune.choice([23, 46, 69, 92]),
                 "a2": tune.choice([23, 46, 69, 92]),
                 "a3": tune.choice([23, 46, 69, 92]),
-                "window": window,
-                "testWindow": testWindow,
-                "loadModel": loadModel
+                "win": window,
+                "testWin": testWindow,
+                "load": loadModel
         })
         print("Best config is:", analysis.best_config)
-        bestNumLayers, bestDrop, = analysis.best_config["numDenseLayers"], analysis.best_config["dropout"]
-        bestBatchSize, bestLR = analysis.best_config["batch_size"], analysis.best_config["lr"]
+        bestNumLayers, bestDrop, = analysis.best_config["numDen"], analysis.best_config["drop"]
+        bestBatchSize, bestLR = analysis.best_config["batch"], analysis.best_config["lr"]
         bestA, bestA1, bestA2, bestA3 = analysis.best_config["a"], analysis.best_config["a1"], analysis.best_config["a2"], analysis.best_config["a3"]
         # save all the "best" variables to a file
         with open("Models/NNRevBestHyperparams.txt", "w") as f:
@@ -318,7 +319,7 @@ def trainEvalNN(window, testWindow, loadModel=False):
                 r2Test, adjR2Test, mseTest, rmseTest, maeTest, corrTest = getModelMetrics(xTest, yTest, model, "NN", training=False)
                 torch.save({'model_state_dict': model.state_dict(), 
                     'optimizer_state_dict': optimizer.state_dict(),
-                    'batch_size': analysis.best_config["batch_size"]},"Models/NNRevModel.pt")
+                    'batch_size': analysis.best_config["batch"]},"Models/NNRevModel.pt")
             elif epoch - bestEpoch >= earlyStopThresh:
                 print("Early stopping at epoch "+str(epoch))
                 break
@@ -335,7 +336,7 @@ def trainEvalNN(window, testWindow, loadModel=False):
         # save the trained model
         torch.save({'model_state_dict': model.state_dict(), 
                     'optimizer_state_dict': optimizer.state_dict(),
-                    'batch_size': analysis.best_config["batch_size"]},"Models/NNRevModel.pt")
+                    'batch_size': analysis.best_config["batch"]},"Models/NNRevModel.pt")
         '''
         
         return r2, adjR2, mse, rmse, mae, corr, r2Test, adjR2Test, mseTest, rmseTest, maeTest, corrTest
@@ -362,6 +363,7 @@ def trainEvalNN(window, testWindow, loadModel=False):
         bestError = 999999999
         earlyStopThresh = 5
         bestEpoch = -1
+        r2, adjR2, mse, rmse, mae, corr, r2Test, adjR2Test, mseTest, rmseTest, maeTest, corrTest = -999,-999,-999,-999,-999,-999,-999,-999,-999,-999,-999,-999
         for epoch in range(1, 100 + 1):
             train(model, optimizer, train_loader)
             epochError = test(model, test_loader)
@@ -435,8 +437,8 @@ def main():
     train = pd.concat([pre2020train,transtrain, post2020train])
     test = pd.concat([pre2020test, transtest, post2020test])
     # move rows that contain "avg" to the bottom
-    train = train[~train.index.str.contains("avg")].append(train[train.index.str.contains("avg")])
-    test = test[~test.index.str.contains("avg")].append(test[test.index.str.contains("avg")])
+    train = pd.concat([train[~train.index.str.contains("avg")],train[train.index.str.contains("avg")]])
+    test = pd.concat([test[~test.index.str.contains("avg")],test[test.index.str.contains("avg")]])
     # START OF TOTAL AVERAGE CODE
     # Repeat the above steps for the NN model
     temp = train.loc[train.index.str.contains("Pre2020NNavg")]*10
@@ -460,8 +462,8 @@ def main():
     test = pd.concat([test, temp])
     # test.rename(index={test.index[-1]:'TotalNNAvg'}, inplace=True)
     # move the rows that contain "Avg" to the bottom
-    train = train[~train.index.str.contains("Avg")].append(train[train.index.str.contains("Avg")])
-    test = test[~test.index.str.contains("Avg")].append(test[test.index.str.contains("Avg")])
+    train = pd.concat([train[~train.index.str.contains("avg")],train[train.index.str.contains("avg")]])
+    test = pd.concat([test[~test.index.str.contains("avg")],test[test.index.str.contains("avg")]])
     # save the dataframes to excel files
     train.to_excel("Metrics/newNNFullHyperTrain.xlsx")
     test.to_excel("Metrics/newNNFullHyperTest.xlsx")
