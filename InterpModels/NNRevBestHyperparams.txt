@@ -1,8 +1,8 @@
-Best number of dense layers: 4
+Best number of dense layers: 2
 Best dropout: 0.85
 Best batch size: 32
-Best learning rate: 0.004166104814537867
-Best a: 23
-Best a1: 92
-Best a2: 92
-Best a3: 23
+Best learning rate: 0.012545033490336682
+Best a: 46
+Best a1: 23
+Best a2: 69
+Best a3: 69

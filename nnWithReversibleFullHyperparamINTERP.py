@@ -144,6 +144,25 @@ def getModelMetrics(x, y, model, modelName, training=True):
     #     y = np.array([value[0] for value in y.values.tolist()])
     # elif training==False:
     #     y = np.array([value[0] for value in y.tolist()])
+    if x.__class__ == pd.core.frame.DataFrame:
+        x = x.iloc[::4, :]
+    # if x is a series
+    elif x.__class__ == pd.core.series.Series:
+        x = x.iloc[::4]
+    # otherwise if it's just a numpy array
+    else:
+        x = x[::4]
+    # if y is a dataframe convert it to a numpy array and then reduce it to be every 4th value
+    if y.__class__ == pd.core.frame.DataFrame:
+        y = np.array([value[0] for value in y.values.tolist()])
+        y = y[::4]
+    # if y is a series convert it to a numpy array and then reduce it to be every 4th value
+    elif y.__class__ == pd.core.series.Series:
+        y = np.array([value[0] for value in y.tolist()])
+        y = y[::4]
+    # otherwise if it's just a numpy array reduce it to be every 4th value
+    else:
+        y = y[::4]
     predictions = model(x)
     # Convert predictions, which is a tensor, to a numpy array
     predictions = predictions.detach().numpy()
@@ -455,8 +474,8 @@ def main():
     train = pd.concat([train[~train.index.str.contains("avg")],train[train.index.str.contains("avg")]])
     test = pd.concat([test[~test.index.str.contains("avg")],test[test.index.str.contains("avg")]])
     # save the dataframes to excel files
-    train.to_excel("Metrics/newNNFullHyperTrainINTERP.xlsx")
-    test.to_excel("Metrics/newNNFullHyperTestINTERP.xlsx")
+    train.to_excel("Metrics/newNNFullHyperTrainINTERP_EVERY4.xlsx")
+    test.to_excel("Metrics/newNNFullHyperTestINTERP_EVERY4.xlsx")
     print("Program Done")
 
 if __name__ == "__main__":

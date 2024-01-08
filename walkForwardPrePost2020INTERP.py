@@ -90,6 +90,27 @@ def getModelMetrics(x, y, model, modelName, training=True):
         y = np.array([value[0] for value in y.values.tolist()])
     elif training==False:
         y = np.array([value[0] for value in y.tolist()])
+    """Reduce the x and y to be every 4th value to remove the synthetic data"""
+    # if x is a dataframe 
+    if x.__class__ == pd.core.frame.DataFrame:
+        x = x.iloc[::4, :]
+    # if x is a series
+    elif x.__class__ == pd.core.series.Series:
+        x = x.iloc[::4]
+    # otherwise if it's just a numpy array
+    else:
+        x = x[::4]
+    # if y is a dataframe convert it to a numpy array and then reduce it to be every 4th value
+    if y.__class__ == pd.core.frame.DataFrame:
+        y = np.array([value[0] for value in y.values.tolist()])
+        y = y[::4]
+    # if y is a series convert it to a numpy array and then reduce it to be every 4th value
+    elif y.__class__ == pd.core.series.Series:
+        y = np.array([value[0] for value in y.tolist()])
+        y = y[::4]
+    # otherwise if it's just a numpy array reduce it to be every 4th value
+    else:
+        y = y[::4]
     predictions = model.predict(x)
     r2 = round(r2_score(y, predictions),3)
     adjR2 = 1 - (1-r2)*(len(y)-1)/(len(y)-x.shape[1]-1)
@@ -109,19 +130,6 @@ def getModelMetrics(x, y, model, modelName, training=True):
     print("RMSE: "+str(rmse))
     print("MAE: "+str(mae))
     print("Pearson's Correlation Coefficient: "+str(corr))
-    # if not training:
-    #     plotPredictions(x, y, model, modelName) 
-    # if modelName ==  "LR" and training:
-    #     plotLRResiduals(x, y.values.tolist(), model)
-    #     print("Displayed LR residuals plot for training data")
-    #     getShapPlot(x, model, modelName)
-    #     print("Displayed LR SHAP plot for training data")
-    # elif modelName == "LR" and not training:
-    #     plotLRResiduals(x, y.tolist(), model)
-    #     print("Displayed LR residuals plot for testing data")
-    # elif modelName == "RF" and training:
-    #     getShapPlot(x, model, modelName)
-    #     print("Displayed RF SHAP plot for training data")
     return r2, adjR2, mse, rmse, mae, corr
 
 def getShapPlot(x, model, modelName):
@@ -656,8 +664,8 @@ def main():
     train = pd.concat([train[~train.index.str.contains("avg")],train[train.index.str.contains("avg")]])
     test = pd.concat([test[~test.index.str.contains("avg")],test[test.index.str.contains("avg")]])
     # save the dataframes to excel files
-    train.to_excel("Metrics/InterpTrainMetrics.xlsx")
-    test.to_excel("Metrics/InterpTestMetrics.xlsx")
+    train.to_excel("Metrics/InterpTrainMetricsEVERY4.xlsx")
+    test.to_excel("Metrics/InterpTestMetricsEVERY4.xlsx")
     print("Program Done")
     # mainPlotting()
 
