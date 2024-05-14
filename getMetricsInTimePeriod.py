@@ -179,7 +179,7 @@ def trainEvalRF(start, end, loadModel=True):
 def trainEvalNN(start, end, loadModel=True):
     xTest, yTest = makeTrainTest("NN", start, end)
     if loadModel:
-        myNN = keras.models.load_model("Models/NNModel.h5")
+        myNN = keras.models.load_model("Models/NNModel.h5", compile=False)
         print("Loaded NN")
         testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(xTest, yTest, myNN, "NN", start,end,training=False)
         print(myNN.summary())
@@ -197,7 +197,7 @@ def trainEvalRNN(start, end, loadModel=True):
     rnnYTest = np.array([yTest.values[i+timestep] for i in range(len(yTest)-timestep)])
     rnnXTest.reshape(len(rnnXTest), timestep, 23)
     if loadModel:
-        myRNN = keras.models.load_model("Models/RNNModel.h5")
+        myRNN = keras.models.load_model("Models/RNNModel.h5", compile=False)
         print("Loaded RNN")
         testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr = getModelMetrics(rnnXTest, rnnYTest, myRNN, "RNN",start,end, training=False)
         print(myRNN.summary())
