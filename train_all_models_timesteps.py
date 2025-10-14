@@ -17,6 +17,7 @@ import sys
 import time
 import pickle
 import warnings
+import argparse
 from datetime import timedelta
 
 import numpy as np
@@ -84,11 +85,13 @@ class ComprehensiveModelTrainer:
 
     # ------------- Data preparation ------------- #
     def prepare_data_for_model(self, df: pd.DataFrame, model_type: str, lag: int, timestep: int = None):
-        inflation_col = f"Inflation_lag_{lag}"
+        # Target column is the current inflation we're trying to predict
+        inflation_col = "AnnualizedMoM-CPI-Inflation"
         if inflation_col not in df.columns:
             raise ValueError(f"Missing column: {inflation_col}")
 
-        econ = df.dropna().reset_index(drop=True)
+        # Drop Date column if present, then dropna
+        econ = df.drop('Date', axis=1, errors='ignore').dropna().reset_index(drop=True)
         econ_scaled = pd.DataFrame(self.scaler.fit_transform(econ), columns=econ.columns)
 
         # Reference post-2020 evaluation params
@@ -229,9 +232,12 @@ class ComprehensiveModelTrainer:
         return fname
 
     # ---------------- Orchestration -------------- #
-    def train_all(self, dataset_types=("regular", "interp"), lags=(1, 3, 6, 12), timesteps=(6, 12, 18)):
-        non_rnn = ['LR', 'DynLR', 'RF', 'NN', 'DynNN', 'Ensemble']
-        rnn_models = ['RNN', 'LSTM', 'GRU']
+    def train_all(self, models=None, dataset_types=("regular", "interp"), lags=(1, 3, 6, 12), timesteps=(6, 12, 18)):
+        if models is None:
+            models = ['LR', 'DynLR', 'RF', 'NN', 'DynNN', 'Ensemble', 'RNN', 'LSTM', 'GRU']
+            
+        non_rnn = [m for m in models if m in ['LR', 'DynLR', 'RF', 'NN', 'DynNN', 'Ensemble']]
+        rnn_models = [m for m in models if m in ['RNN', 'LSTM', 'GRU']]
 
         total = len(dataset_types) * len(lags) * len(non_rnn) + len(dataset_types) * len(lags) * len(rnn_models) * len(timesteps)
         count = 0
@@ -279,17 +285,18 @@ class ComprehensiveModelTrainer:
                         self.timing[m] = self.timing.get(m, 0.0) + dt
 
                         self.results.append({
-                            'dataset': dset,
-                            'model': m,
-                            'lag': lag,
-                            'timestep': 'N/A',
-                            'train_rmse': tr,
-                            'train_mae': ta,
-                            'test_rmse': er,
-                            'test_mae': ea,
-                            'model_file': artifact,
-                            'data_shape_train': str(Xtr.shape),
-                            'data_shape_test': str(Xte.shape)
+                            'Dataset': dset,
+                            'Prediction_Lag': lag,
+                            'Model': m,
+                            'Timestep': 'N/A',
+                            'Train_RMSE': tr,
+                            'Train_MAE': ta,
+                            'Test_RMSE': er,
+                            'Test_MAE': ea,
+                            'Training_Time_Seconds': dt,
+                            'Model_File': artifact,
+                            'Data_Shape_Train': str(Xtr.shape),
+                            'Data_Shape_Test': str(Xte.shape)
                         })
                         print("✅ Evaluation complete:")
                         print(f"   Train: RMSE={tr:.4f}, MAE={ta:.4f}")
@@ -319,17 +326,18 @@ class ComprehensiveModelTrainer:
                             self.timing[m] = self.timing.get(m, 0.0) + dt
 
                             self.results.append({
-                                'dataset': dset,
-                                'model': m,
-                                'lag': lag,
-                                'timestep': tstep,
-                                'train_rmse': tr,
-                                'train_mae': ta,
-                                'test_rmse': er,
-                                'test_mae': ea,
-                                'model_file': artifact,
-                                'data_shape_train': str(Xtr.shape),
-                                'data_shape_test': str(Xte.shape)
+                                'Dataset': dset,
+                                'Prediction_Lag': lag,
+                                'Model': m,
+                                'Timestep': tstep,
+                                'Train_RMSE': tr,
+                                'Train_MAE': ta,
+                                'Test_RMSE': er,
+                                'Test_MAE': ea,
+                                'Training_Time_Seconds': dt,
+                                'Model_File': artifact,
+                                'Data_Shape_Train': str(Xtr.shape),
+                                'Data_Shape_Test': str(Xte.shape)
                             })
                             print("✅ Evaluation complete:")
                             print(f"   Train: RMSE={tr:.4f}, MAE={ta:.4f}")
@@ -338,11 +346,20 @@ class ComprehensiveModelTrainer:
                         except Exception as e:
                             print(f"❌ Error training {m} t{tstep}: {e}")
 
-    def save_results(self):
-        # Detailed results
-        pd.DataFrame(self.results).to_csv('training_results_detailed.csv', index=False)
+    def save_results(self, save_csv=True):
+        if save_csv:
+            # Detailed results with original column names
+            pd.DataFrame(self.results).to_csv('training_results_detailed.csv', index=False)
+            print("Detailed results saved to: training_results_detailed.csv")
 
-        # Timing breakdown
+            # Timing breakdown CSV
+            pd.DataFrame([
+                {'Model': k, 'Time_Seconds': v, 'Time_Formatted': str(timedelta(seconds=int(v)))}
+                for k, v in self.timing.items()
+            ]).to_csv('training_timing_results.csv', index=False)
+            print("Timing results saved to: training_timing_results.csv")
+
+        # Always save text summary
         lines = [
             "========================================",
             "TIMING BREAKDOWN:",
@@ -357,24 +374,72 @@ class ComprehensiveModelTrainer:
         with open('training_results_summary.txt', 'w') as f:
             f.write("\n".join(lines))
 
-        pd.DataFrame([
-            {'Model': k, 'Time_Seconds': v, 'Time_Formatted': str(timedelta(seconds=int(v)))}
-            for k, v in self.timing.items()
-        ]).to_csv('training_timing_results.csv', index=False)
-
         # Echo to console (so it appears in tmux capture)
         print("\n" + "\n".join(lines))
         print("Results summary saved to: training_results_summary.txt")
-        print("Detailed results saved to: training_results_detailed.csv")
-        print("Timing results saved to: training_timing_results.csv")
+
+
+def parse_args():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(description='Comprehensive Model Training for COVID-Inflation Analysis')
+    
+    parser.add_argument('--models', nargs='+', 
+                        choices=['LR', 'DynLR', 'RF', 'NN', 'DynNN', 'Ensemble', 'RNN', 'LSTM', 'GRU'],
+                        default=['LR', 'DynLR', 'RF', 'NN', 'DynNN', 'Ensemble', 'RNN', 'LSTM', 'GRU'],
+                        help='Models to train (default: all models)')
+    
+    parser.add_argument('--prediction-lags', nargs='+', type=int,
+                        default=[1, 3, 6, 12],
+                        help='Prediction lags to use (default: 1 3 6 12)')
+    
+    parser.add_argument('--datasets', nargs='+',
+                        choices=['regular', 'interp', 'dynamic', 'brent3covid'],
+                        default=['regular', 'interp'],
+                        help='Datasets to use (default: regular interp)')
+    
+    parser.add_argument('--timesteps', nargs='+', type=int,
+                        default=[6, 12, 18],
+                        help='Timesteps for RNN models (default: 6 12 18)')
+    
+    # CSV output control
+    csv_group = parser.add_mutually_exclusive_group()
+    csv_group.add_argument('--save-csv', action='store_true', default=True,
+                          help='Save results to CSV files (default)')
+    csv_group.add_argument('--no-csv', action='store_true', default=False,
+                          help='Do not save results to CSV files')
+    
+    return parser.parse_args()
 
 
 def main():
+    args = parse_args()
+    
     print("🚀 Starting Comprehensive Model Training")
+    print("="*60)
+    print(f"Models: {args.models}")
+    print(f"Prediction Lags: {args.prediction_lags}")
+    print(f"Datasets: {args.datasets}")
+    print(f"Timesteps (for RNNs): {args.timesteps}")
+    print(f"Save CSV: {not args.no_csv}")
+    print("="*60)
+    
     trainer = ComprehensiveModelTrainer()
-    trainer.train_all(dataset_types=("regular", "interp"), lags=(1, 3, 6, 12), timesteps=(6, 12, 18))
-    trainer.save_results()
-    print("\n🎉 Comprehensive training complete!")
+    
+    # Convert command line args to method parameters
+    trainer.train_all(
+        models=args.models,
+        dataset_types=tuple(args.datasets), 
+        lags=tuple(args.prediction_lags), 
+        timesteps=tuple(args.timesteps)
+    )
+    
+    # Save results with CSV control
+    trainer.save_results(save_csv=not args.no_csv)
+    
+    print(f"\n🎉 Comprehensive training complete!")
+    print(f"   Total models trained: {len(trainer.results)}")
+    if not args.no_csv:
+        print("   Results saved to CSV files")
 
 
 if __name__ == "__main__":
