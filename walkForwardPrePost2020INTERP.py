@@ -25,6 +25,35 @@ from yellowbrick.regressor.residuals import residuals_plot
 from scikeras.wrappers import KerasRegressor
 from sklearn.ensemble import VotingRegressor
 from generateMetricPlots import mainPlotting
+from statsmodels.tsa.arima.model import ARIMA
+from statsmodels.tools.sm_exceptions import ConvergenceWarning
+warnings.filterwarnings("ignore", category=ConvergenceWarning)
+
+"""
+Walk-forward validation for inflation forecasting models (INTERPOLATED DATA VERSION).
+
+This script trains and evaluates multiple models (Linear Regression, Random Forest, ARIMA, 
+Neural Network, RNN, and Ensemble) across different time periods (pre-2020, transition, post-2020)
+using interpolated monthly data.
+
+Usage:
+    # Train all models (default)
+    python walkForwardPrePost2020INTERP.py
+    
+    # Train specific models
+    python walkForwardPrePost2020INTERP.py --models LR RF ARIMA
+    
+    # Train only neural networks
+    python walkForwardPrePost2020INTERP.py --models NN RNN
+    
+    # Load existing models instead of training from scratch
+    python walkForwardPrePost2020INTERP.py --load-model
+    
+    # Combine options
+    python walkForwardPrePost2020INTERP.py --models LR ARIMA NN --load-model
+
+Available models: LR, RF, ARIMA, NN, RNN, Ensemble, all
+"""
 
 def readEconData(filename):
     return pd.read_excel(filename)
@@ -158,7 +187,7 @@ def compileMetrics(metricsDict):
     trainingMetrics = pd.DataFrame(columns = ["cvMSE", "cvRMSE", "cvMAE","Train R^2", "Train Adjusted R^2", "Train MSE", "Train RMSE", "Train MAE", "Train Pearson's Correlation Coefficient"])
     testingMetrics = pd.DataFrame(columns=["Test R^2", "Test Adjusted R^2", "Test MSE", "Test RMSE", "Test MAE", "Test Pearson's Correlation Coefficient"])
     for key in metricsDict.keys():
-        if "LR" in key or "RF" in key:
+        if "LR" in key or "RF" in key or "ARIMA" in key:
             trainingMetrics.loc[key] = metricsDict[key][:9]
             testingMetrics.loc[key] = metricsDict[key][9:]
         else:
@@ -256,6 +285,146 @@ def trainEvalRF(window, testWindow, loadModel=False):
     if isinstance(trainMAE, pd.Series):
         trainMAE = trainMAE[0]
     return cvMSE, cvRMSE, cvMAE, trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr, testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr
+
+def trainEvalARIMA(window, testWindow, loadModel=False):
+    xTrain, yTrain, xTest, yTest = makeTrainTest("ARIMA", window, testWindow)
+    
+    # ARIMA works with the time series directly, so we'll use yTrain as the series
+    # We'll try different ARIMA orders and pick the best one based on AIC
+    # Common starting point is ARIMA(1,1,1) but we'll search a small grid
+    
+    if loadModel:
+        myARIMA = pickle.load(open("InterpModels/ARIMAModel.pickle", "rb"))
+        best_order = myARIMA.model.order
+        print("ARIMA Model Loaded")
+        print(f"ARIMA order: {best_order}")
+    else:
+        # Grid search for best ARIMA parameters
+        best_aic = np.inf
+        best_order = None
+        best_model = None
+        
+        # Search over a reasonable parameter space
+        p_range = range(0, 4)  # AR order
+        d_range = range(0, 2)  # Differencing order
+        q_range = range(0, 4)  # MA order
+        
+        print("Searching for best ARIMA parameters...")
+        for p in p_range:
+            for d in d_range:
+                for q in q_range:
+                    try:
+                        model = ARIMA(yTrain.values.flatten(), order=(p, d, q))
+                        fitted_model = model.fit()
+                        if fitted_model.aic < best_aic:
+                            best_aic = fitted_model.aic
+                            best_order = (p, d, q)
+                            best_model = fitted_model
+                    except:
+                        continue
+        
+        print(f"Best ARIMA order: {best_order} with AIC: {best_aic:.3f}")
+        myARIMA = best_model
+        
+        # Perform cross-validation using rolling window
+        print("Performing cross validation for ARIMA")
+        cv_mse_scores = []
+        cv_rmse_scores = []
+        cv_mae_scores = []
+        
+        # 5-fold time series cross validation
+        tscv = TimeSeriesSplit(n_splits=5)
+        for train_idx, val_idx in tscv.split(yTrain):
+            train_cv = yTrain.iloc[train_idx].values.flatten()
+            val_cv = yTrain.iloc[val_idx].values.flatten()
+            
+            try:
+                cv_model = ARIMA(train_cv, order=best_order)
+                cv_fitted = cv_model.fit()
+                cv_pred = cv_fitted.forecast(steps=len(val_cv))
+                
+                cv_mse_scores.append(mean_squared_error(val_cv, cv_pred))
+                cv_rmse_scores.append(np.sqrt(mean_squared_error(val_cv, cv_pred)))
+                cv_mae_scores.append(np.mean(np.abs(val_cv - cv_pred)))
+            except:
+                continue
+        
+        cvMSE = round(np.mean(cv_mse_scores), 3) if cv_mse_scores else 0
+        cvRMSE = round(np.mean(cv_rmse_scores), 3) if cv_rmse_scores else 0
+        cvMAE = round(np.mean(cv_mae_scores), 3) if cv_mae_scores else 0
+        
+        print("Average CV test scores for ARIMA:")
+        print("MSE: " + str(cvMSE))
+        print("RMSE: " + str(cvRMSE))
+        print("MAE: " + str(cvMAE))
+        print("Finished cross validation for ARIMA")
+    
+    # Create a wrapper class for ARIMA to have a predict method compatible with getModelMetrics
+    class ARIMAWrapper:
+        def __init__(self, model, train_data, order):
+            self.model = model
+            self.train_data = train_data
+            self.order = order
+        
+        def predict(self, steps):
+            if isinstance(steps, pd.DataFrame) or isinstance(steps, np.ndarray):
+                n_steps = len(steps)
+            else:
+                n_steps = steps
+            return self.model.forecast(steps=n_steps)
+        
+        def refit(self, new_data):
+            """Refit the model with new data"""
+            model = ARIMA(new_data.values.flatten(), order=self.order)
+            self.model = model.fit()
+            return self
+    
+    if loadModel:
+        wrapper = ARIMAWrapper(myARIMA, yTrain, myARIMA.model.order)
+    else:
+        wrapper = ARIMAWrapper(myARIMA, yTrain, best_order)
+    
+    # Get training metrics
+    train_pred = wrapper.predict(len(yTrain))
+    trainR2 = round(r2_score(yTrain.values.flatten(), train_pred), 3)
+    trainAdjR2 = 1 - (1-trainR2)*(len(yTrain)-1)/(len(yTrain)-sum(best_order if not loadModel else myARIMA.model.order)-1)
+    trainAdjR2 = round(trainAdjR2, 3)
+    trainMSE = round(mean_squared_error(yTrain.values.flatten(), train_pred), 3)
+    trainRMSE = round(np.sqrt(trainMSE), 3)
+    trainMAE = round(np.mean(np.abs(yTrain.values.flatten() - train_pred)), 3)
+    trainCorr = round(np.corrcoef(train_pred, yTrain.values.flatten())[0,1], 3)
+    
+    print("Training Metrics for ARIMA:")
+    print("R^2: " + str(trainR2))
+    print("Adjusted R^2: " + str(trainAdjR2))
+    print("MSE: " + str(trainMSE))
+    print("RMSE: " + str(trainRMSE))
+    print("MAE: " + str(trainMAE))
+    print("Pearson's Correlation Coefficient: " + str(trainCorr))
+    
+    # Get testing metrics
+    test_pred = wrapper.predict(len(yTest))
+    testR2 = round(r2_score(yTest.values.flatten(), test_pred), 3)
+    testAdjR2 = 1 - (1-testR2)*(len(yTest)-1)/(len(yTest)-sum(best_order if not loadModel else myARIMA.model.order)-1)
+    testAdjR2 = round(testAdjR2, 3)
+    testMSE = round(mean_squared_error(yTest.values.flatten(), test_pred), 3)
+    testRMSE = round(np.sqrt(testMSE), 3)
+    testMAE = round(np.mean(np.abs(yTest.values.flatten() - test_pred)), 3)
+    testCorr = round(np.corrcoef(test_pred, yTest.values.flatten())[0,1], 3)
+    
+    print("Testing Metrics for ARIMA:")
+    print("MSE: " + str(testMSE))
+    print("RMSE: " + str(testRMSE))
+    print("MAE: " + str(testMAE))
+    print("Pearson's Correlation Coefficient: " + str(testCorr))
+    
+    if not loadModel:
+        pickle.dump(myARIMA, open("InterpModels/ARIMAModel.pickle", "wb"))
+        print("ARIMA Model Saved")
+        return cvMSE, cvRMSE, cvMAE, trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr, testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr
+    else:
+        # For loaded models, return dummy CV metrics (0) to match the expected format
+        return 0, 0, 0, trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr, testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr
 
 # Reference: https://stackoverflow.com/questions/62393032/custom-loss-function-with-weights-in-keras
 def myMSE(weights):
@@ -474,7 +643,23 @@ def trainEvalEnsemble(window, testWindow, loadModel=False):
     return trainR2, trainAdjR2, trainMSE, trainRMSE, trainMAE, trainCorr, testR2, testAdjR2, testMSE, testRMSE, testMAE, testCorr
 
 def main():
-    loadModel = False
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Train and evaluate inflation forecasting models (INTERPOLATED DATA)')
+    parser.add_argument('--models', nargs='+', choices=['LR', 'RF', 'ARIMA', 'NN', 'RNN', 'Ensemble', 'all'],
+                        default=['all'], help='Specify which models to train (default: all)')
+    parser.add_argument('--load-model', action='store_true', help='Load existing models instead of training from scratch')
+    args = parser.parse_args()
+    
+    # Determine which models to train
+    if 'all' in args.models:
+        models_to_train = {'LR', 'RF', 'ARIMA', 'NN', 'RNN', 'Ensemble'}
+    else:
+        models_to_train = set(args.models)
+    
+    loadModel = args.load_model
+    print(f"Training models: {', '.join(sorted(models_to_train))}")
+    print(f"Load existing models: {loadModel}")
+    
     pre2020trainWindowSize, pre2020testWindowSize = [490 + 20*i for i in range(49)], 20
     pre2020trainMetrics, pre2020testMetrics = [], []
     transTrainWindowSize, transTestWindowSize = [1470], 16
@@ -486,22 +671,70 @@ def main():
     post2020trainMetrics, post2020testMetrics = [], []
     for count, window in enumerate(pre2020trainWindowSize):
         if count == 0:
-            metricsDict = {"LR"+str(window): trainEvalLR(window,pre2020testWindowSize, loadModel), "RF"+str(window): trainEvalRF(window, pre2020testWindowSize, loadModel), "NN"+str(window): trainEvalNN(window, pre2020testWindowSize, loadModel), "RNN": trainEvalRNN(window, pre2020testWindowSize, loadModel), "Ensemble": trainEvalEnsemble(window, pre2020testWindowSize, loadModel) }
+            metricsDict = {}
+            if 'LR' in models_to_train:
+                metricsDict["LR"+str(window)] = trainEvalLR(window, pre2020testWindowSize, loadModel)
+            if 'RF' in models_to_train:
+                metricsDict["RF"+str(window)] = trainEvalRF(window, pre2020testWindowSize, loadModel)
+            if 'ARIMA' in models_to_train:
+                metricsDict["ARIMA"+str(window)] = trainEvalARIMA(window, pre2020testWindowSize, loadModel)
+            if 'NN' in models_to_train:
+                metricsDict["NN"+str(window)] = trainEvalNN(window, pre2020testWindowSize, loadModel)
+            if 'RNN' in models_to_train:
+                metricsDict["RNN"] = trainEvalRNN(window, pre2020testWindowSize, loadModel)
+            if 'Ensemble' in models_to_train:
+                metricsDict["Ensemble"] = trainEvalEnsemble(window, pre2020testWindowSize, loadModel)
             train, test = compileMetrics(metricsDict)
             pre2020trainMetrics.append(train)
             pre2020testMetrics.append(test)
         else:
-            metricsDict = {"LR"+str(window): trainEvalLR(window,pre2020testWindowSize, loadModel), "RF"+str(window): trainEvalRF(window, pre2020testWindowSize, loadModel), "NN"+str(window): trainEvalNN(window, pre2020testWindowSize, loadModel=True), "RNN": trainEvalRNN(window, pre2020testWindowSize, loadModel=True), "Ensemble": trainEvalEnsemble(window, pre2020testWindowSize, loadModel) }
+            metricsDict = {}
+            if 'LR' in models_to_train:
+                metricsDict["LR"+str(window)] = trainEvalLR(window, pre2020testWindowSize, loadModel)
+            if 'RF' in models_to_train:
+                metricsDict["RF"+str(window)] = trainEvalRF(window, pre2020testWindowSize, loadModel)
+            if 'ARIMA' in models_to_train:
+                metricsDict["ARIMA"+str(window)] = trainEvalARIMA(window, pre2020testWindowSize, loadModel=True)
+            if 'NN' in models_to_train:
+                metricsDict["NN"+str(window)] = trainEvalNN(window, pre2020testWindowSize, loadModel=True)
+            if 'RNN' in models_to_train:
+                metricsDict["RNN"] = trainEvalRNN(window, pre2020testWindowSize, loadModel=True)
+            if 'Ensemble' in models_to_train:
+                metricsDict["Ensemble"] = trainEvalEnsemble(window, pre2020testWindowSize, loadModel)
             train, test = compileMetrics(metricsDict)
             pre2020trainMetrics.append(train)
             pre2020testMetrics.append(test)
     for window in transTrainWindowSize:
-        metricsDict = {"LR"+str(window): trainEvalLR(window,transTestWindowSize, loadModel), "RF"+str(window): trainEvalRF(window, transTestWindowSize, loadModel), "NN"+str(window): trainEvalNN(window, transTestWindowSize, loadModel=True), "RNN": trainEvalRNN(window, transTestWindowSize, loadModel=True), "Ensemble": trainEvalEnsemble(window, transTestWindowSize, loadModel) }
+        metricsDict = {}
+        if 'LR' in models_to_train:
+            metricsDict["LR"+str(window)] = trainEvalLR(window, transTestWindowSize, loadModel)
+        if 'RF' in models_to_train:
+            metricsDict["RF"+str(window)] = trainEvalRF(window, transTestWindowSize, loadModel)
+        if 'ARIMA' in models_to_train:
+            metricsDict["ARIMA"+str(window)] = trainEvalARIMA(window, transTestWindowSize, loadModel=True)
+        if 'NN' in models_to_train:
+            metricsDict["NN"+str(window)] = trainEvalNN(window, transTestWindowSize, loadModel=True)
+        if 'RNN' in models_to_train:
+            metricsDict["RNN"] = trainEvalRNN(window, transTestWindowSize, loadModel=True)
+        if 'Ensemble' in models_to_train:
+            metricsDict["Ensemble"] = trainEvalEnsemble(window, transTestWindowSize, loadModel)
         train, test = compileMetrics(metricsDict)
         transTrainMetrics.append(train)
         transTestMetrics.append(test)
     for count, window in enumerate(post2020trainWindowSize):
-        metricsDict = {"LR"+str(window): trainEvalLR(window,post2020testWindowSize, loadModel), "RF"+str(window): trainEvalRF(window, post2020testWindowSize, loadModel), "NN"+str(window): trainEvalNN(window, post2020testWindowSize, loadModel=True), "RNN": trainEvalRNN(window, post2020testWindowSize, loadModel=True), "Ensemble": trainEvalEnsemble(window, post2020testWindowSize, loadModel) }
+        metricsDict = {}
+        if 'LR' in models_to_train:
+            metricsDict["LR"+str(window)] = trainEvalLR(window, post2020testWindowSize, loadModel)
+        if 'RF' in models_to_train:
+            metricsDict["RF"+str(window)] = trainEvalRF(window, post2020testWindowSize, loadModel)
+        if 'ARIMA' in models_to_train:
+            metricsDict["ARIMA"+str(window)] = trainEvalARIMA(window, post2020testWindowSize, loadModel=True)
+        if 'NN' in models_to_train:
+            metricsDict["NN"+str(window)] = trainEvalNN(window, post2020testWindowSize, loadModel=True)
+        if 'RNN' in models_to_train:
+            metricsDict["RNN"] = trainEvalRNN(window, post2020testWindowSize, loadModel=True)
+        if 'Ensemble' in models_to_train:
+            metricsDict["Ensemble"] = trainEvalEnsemble(window, post2020testWindowSize, loadModel)
         train, test = compileMetrics(metricsDict)
         post2020trainMetrics.append(train)
         post2020testMetrics.append(test)
@@ -509,163 +742,198 @@ def main():
     pre2020train, pre2020test = pd.concat(pre2020trainMetrics), pd.concat(pre2020testMetrics)
     transtrain, transtest = pd.concat(transTrainMetrics), pd.concat(transTestMetrics)
     post2020train, post2020test = pd.concat(post2020trainMetrics), pd.concat(post2020testMetrics)
-    # add a row at the end which is the average of each column for rows containing "LR"
-    pre2020train.loc['Pre2020LRavg'] = pre2020train.loc[pre2020train.index.str.contains("LR")].mean()
-    pre2020test.loc['Pre2020LRavg'] = pre2020test.loc[pre2020test.index.str.contains("LR")].mean()
-    transtrain.loc['TransLRavg'] = transtrain.loc[transtrain.index.str.contains("LR")].mean()
-    transtest.loc['TransLRavg'] = transtest.loc[transtest.index.str.contains("LR")].mean()
-    post2020train.loc['Post2020LRavg'] = post2020train.loc[post2020train.index.str.contains("LR")].mean()
-    post2020test.loc['Post2020LRavg'] = post2020test.loc[post2020test.index.str.contains("LR")].mean()
-    # add a row at the end which is the average of each column for rows containing "RF"
-    pre2020train.loc['Pre2020RFavg'] = pre2020train.loc[pre2020train.index.str.contains("RF")].mean()
-    pre2020test.loc['Pre2020RFavg'] = pre2020test.loc[pre2020test.index.str.contains("RF")].mean()
-    transtrain.loc['TransRFavg'] = transtrain.loc[transtrain.index.str.contains("RF")].mean()
-    transtest.loc['TransRFavg'] = transtest.loc[transtest.index.str.contains("RF")].mean()
-    post2020train.loc['Post2020RFavg'] = post2020train.loc[post2020train.index.str.contains("RF")].mean()
-    post2020test.loc['Post2020RFavg'] = post2020test.loc[post2020test.index.str.contains("RF")].mean()
-    # add a row at the end which is the average of each column for rows containing "NN"
-    pre2020train.loc['Pre2020NNavg'] = pre2020train.loc[pre2020train.index.str.contains("NN")].mean()
-    pre2020test.loc['Pre2020NNavg'] = pre2020test.loc[pre2020test.index.str.contains("NN")].mean()
-    transtrain.loc['TransNNavg'] = transtrain.loc[transtrain.index.str.contains("NN")].mean()
-    transtest.loc['TransNNavg'] = transtest.loc[transtest.index.str.contains("NN")].mean()
-    post2020train.loc['Post2020NNavg'] = post2020train.loc[post2020train.index.str.contains("NN")].mean()
-    post2020test.loc['Post2020NNavg'] = post2020test.loc[post2020test.index.str.contains("NN")].mean()
-    # add a row at the end which is the average of each column for rows containing "RNN"
-    pre2020train.loc['Pre2020RNNavg'] = pre2020train.loc[pre2020train.index.str.contains("RNN")].mean()
-    pre2020test.loc['Pre2020RNNavg'] = pre2020test.loc[pre2020test.index.str.contains("RNN")].mean()
-    transtrain.loc['TransRNNavg'] = transtrain.loc[transtrain.index.str.contains("RNN")].mean()
-    transtest.loc['TransRNNavg'] = transtest.loc[transtest.index.str.contains("RNN")].mean()
-    post2020train.loc['Post2020RNNavg'] = post2020train.loc[post2020train.index.str.contains("RNN")].mean()
-    post2020test.loc['Post2020RNNavg'] = post2020test.loc[post2020test.index.str.contains("RNN")].mean()
-    # add a row at the end which is the average of each column for rows containing "Ensemble"
-    pre2020train.loc['Pre2020Ensembleavg'] = pre2020train.loc[pre2020train.index.str.contains("Ensemble")].mean()
-    pre2020test.loc['Pre2020Ensembleavg'] = pre2020test.loc[pre2020test.index.str.contains("Ensemble")].mean()
-    transtrain.loc['TransEnsembleavg'] = transtrain.loc[transtrain.index.str.contains("Ensemble")].mean()
-    transtest.loc['TransEnsembleavg'] = transtest.loc[transtest.index.str.contains("Ensemble")].mean()
-    post2020train.loc['Post2020Ensembleavg'] = post2020train.loc[post2020train.index.str.contains("Ensemble")].mean()
-    post2020test.loc['Post2020Ensembleavg'] = post2020test.loc[post2020test.index.str.contains("Ensemble")].mean()
+    
+    # Add average rows for each model type that was trained
+    if 'LR' in models_to_train:
+        # add a row at the end which is the average of each column for rows containing "LR"
+        pre2020train.loc['Pre2020LRavg'] = pre2020train.loc[pre2020train.index.str.contains("LR")].mean()
+        pre2020test.loc['Pre2020LRavg'] = pre2020test.loc[pre2020test.index.str.contains("LR")].mean()
+        transtrain.loc['TransLRavg'] = transtrain.loc[transtrain.index.str.contains("LR")].mean()
+        transtest.loc['TransLRavg'] = transtest.loc[transtest.index.str.contains("LR")].mean()
+        post2020train.loc['Post2020LRavg'] = post2020train.loc[post2020train.index.str.contains("LR")].mean()
+        post2020test.loc['Post2020LRavg'] = post2020test.loc[post2020test.index.str.contains("LR")].mean()
+    
+    if 'RF' in models_to_train:
+        # add a row at the end which is the average of each column for rows containing "RF"
+        pre2020train.loc['Pre2020RFavg'] = pre2020train.loc[pre2020train.index.str.contains("RF")].mean()
+        pre2020test.loc['Pre2020RFavg'] = pre2020test.loc[pre2020test.index.str.contains("RF")].mean()
+        transtrain.loc['TransRFavg'] = transtrain.loc[transtrain.index.str.contains("RF")].mean()
+        transtest.loc['TransRFavg'] = transtest.loc[transtest.index.str.contains("RF")].mean()
+        post2020train.loc['Post2020RFavg'] = post2020train.loc[post2020train.index.str.contains("RF")].mean()
+        post2020test.loc['Post2020RFavg'] = post2020test.loc[post2020test.index.str.contains("RF")].mean()
+    
+    if 'ARIMA' in models_to_train:
+        # add a row at the end which is the average of each column for rows containing "ARIMA"
+        pre2020train.loc['Pre2020ARIMAavg'] = pre2020train.loc[pre2020train.index.str.contains("ARIMA")].mean()
+        pre2020test.loc['Pre2020ARIMAavg'] = pre2020test.loc[pre2020test.index.str.contains("ARIMA")].mean()
+        transtrain.loc['TransARIMAavg'] = transtrain.loc[transtrain.index.str.contains("ARIMA")].mean()
+        transtest.loc['TransARIMAavg'] = transtest.loc[transtest.index.str.contains("ARIMA")].mean()
+        post2020train.loc['Post2020ARIMAavg'] = post2020train.loc[post2020train.index.str.contains("ARIMA")].mean()
+        post2020test.loc['Post2020ARIMAavg'] = post2020test.loc[post2020test.index.str.contains("ARIMA")].mean()
+    
+    if 'NN' in models_to_train:
+        # add a row at the end which is the average of each column for rows containing "NN"
+        pre2020train.loc['Pre2020NNavg'] = pre2020train.loc[pre2020train.index.str.contains("NN")].mean()
+        pre2020test.loc['Pre2020NNavg'] = pre2020test.loc[pre2020test.index.str.contains("NN")].mean()
+        transtrain.loc['TransNNavg'] = transtrain.loc[transtrain.index.str.contains("NN")].mean()
+        transtest.loc['TransNNavg'] = transtest.loc[transtest.index.str.contains("NN")].mean()
+        post2020train.loc['Post2020NNavg'] = post2020train.loc[post2020train.index.str.contains("NN")].mean()
+        post2020test.loc['Post2020NNavg'] = post2020test.loc[post2020test.index.str.contains("NN")].mean()
+    
+    if 'RNN' in models_to_train:
+        # add a row at the end which is the average of each column for rows containing "RNN"
+        pre2020train.loc['Pre2020RNNavg'] = pre2020train.loc[pre2020train.index.str.contains("RNN")].mean()
+        pre2020test.loc['Pre2020RNNavg'] = pre2020test.loc[pre2020test.index.str.contains("RNN")].mean()
+        transtrain.loc['TransRNNavg'] = transtrain.loc[transtrain.index.str.contains("RNN")].mean()
+        transtest.loc['TransRNNavg'] = transtest.loc[transtest.index.str.contains("RNN")].mean()
+        post2020train.loc['Post2020RNNavg'] = post2020train.loc[post2020train.index.str.contains("RNN")].mean()
+        post2020test.loc['Post2020RNNavg'] = post2020test.loc[post2020test.index.str.contains("RNN")].mean()
+    
+    if 'Ensemble' in models_to_train:
+        # add a row at the end which is the average of each column for rows containing "Ensemble"
+        pre2020train.loc['Pre2020Ensembleavg'] = pre2020train.loc[pre2020train.index.str.contains("Ensemble")].mean()
+        pre2020test.loc['Pre2020Ensembleavg'] = pre2020test.loc[pre2020test.index.str.contains("Ensemble")].mean()
+        transtrain.loc['TransEnsembleavg'] = transtrain.loc[transtrain.index.str.contains("Ensemble")].mean()
+        transtest.loc['TransEnsembleavg'] = transtest.loc[transtest.index.str.contains("Ensemble")].mean()
+        post2020train.loc['Post2020Ensembleavg'] = post2020train.loc[post2020train.index.str.contains("Ensemble")].mean()
+        post2020test.loc['Post2020Ensembleavg'] = post2020test.loc[post2020test.index.str.contains("Ensemble")].mean()
+    
     # combine the train and test dataframes into one
     train = pd.concat([pre2020train,transtrain, post2020train])
     test = pd.concat([pre2020test, transtest, post2020test])
     # move rows that contain "avg" to the bottom
     train = pd.concat([train[~train.index.str.contains("avg")],train[train.index.str.contains("avg")]])
     test = pd.concat([test[~test.index.str.contains("avg")],test[test.index.str.contains("avg")]])
-    # START OF TOTAL AVERAGE CODE
-    temp = train.loc[train.index.str.contains("Pre2020LRavg")]*20 
-    temp2 = train.loc[train.index.str.contains('TransLRavg')]*16
-    temp3 = train.loc[train.index.str.contains("Post2020LRavg")]*16
-    # Add each value of dataframe temp2 to temp's values, leading to temp's values array being of shape (1, 9)
-    for i in range(len(temp2.columns)):
-        temp.iloc[0,i] = temp.iloc[0,i] + temp2.iloc[0,i] + temp3.iloc[0,i]
-    # Divide temp's values by 12
-    temp = temp/52
-    # Rename the index of temp to TotalLRAvg
-    temp.rename(index={temp.index[0]:'TotalLRAvg'}, inplace=True)
-    # Add temp as a row to the end of the train dataframe
-    train = pd.concat([train, temp])
-    # Rename the last row in train to TotalLRAvg
-    # train.rename(index={train.index[-1]:'TotalLRAvg'}, inplace=True)
-    # Repeat the above steps for the test dataframe
-    temp = test.loc[test.index.str.contains("Pre2020LRavg")]*20
-    temp2 = test.loc[test.index.str.contains("TransLRavg")]*16
-    temp3 = test.loc[test.index.str.contains("Post2020LRavg")]*16
-    for i in range(len(temp2.columns)):
-        temp.iloc[0,i] = temp.iloc[0,i] + temp2.iloc[0,i] + temp3.iloc[0,i]
-    temp = temp/52
-    # Rename the index of temp to TotalLRAvg
-    temp.rename(index={temp.index[0]:'TotalLRAvg'}, inplace=True)
-    test = pd.concat([test, temp])
-    test.rename(index={test.index[-1]:'TotalLRAvg'}, inplace=True)
-    # Repeat the above steps for the RF model
-    temp = train.loc[train.index.str.contains("Pre2020RFavg")]*20
-    temp2 = train.loc[train.index.str.contains("TransRFavg")]*16
-    temp3 = train.loc[train.index.str.contains("Post2020RFavg")]*16
-    for i in range(len(temp2.columns)):
-        temp.iloc[0,i] = temp.iloc[0,i] + temp2.iloc[0,i] + temp3.iloc[0,i]
-    temp = temp/52
-    # Rename the index of temp to TotalRFAvg
-    temp.rename(index={temp.index[0]:'TotalRFAvg'}, inplace=True)
-    train = pd.concat([train, temp])
-    # train.rename(index={train.index[-1]:'TotalRFAvg'}, inplace=True)
-    temp = test.loc[test.index.str.contains("Pre2020RFavg")]*20
-    temp2 = test.loc[test.index.str.contains("TransRFavg")]*16
-    temp3 = test.loc[test.index.str.contains("Post2020RFavg")]*16
-    for i in range(len(temp2.columns)):
-        temp.iloc[0,i] = temp.iloc[0,i] + temp2.iloc[0,i] + temp3.iloc[0,i]
-    temp = temp/52
-    # Rename the index of temp to TotalRFAvg
-    temp.rename(index={temp.index[0]:'TotalRFAvg'}, inplace=True)
-    test = pd.concat([test, temp])
-    # test.rename(index={test.index[-1]:'TotalRFAvg'}, inplace=True)
-    # Repeat the above steps for the NN model
-    temp = train.loc[train.index.str.contains("Pre2020NNavg")]*20
-    temp2 = train.loc[train.index.str.contains("TransNNavg")]*16
-    temp3 = train.loc[train.index.str.contains("Post2020NNavg")]*16
-    for i in range(len(temp2.columns)):
-        temp.iloc[0,i] = temp.iloc[0,i] + temp2.iloc[0,i] + temp3.iloc[0,i]
-    temp = temp/52
-    # Rename the index of temp to TotalNNAvg
-    temp.rename(index={temp.index[0]:'TotalNNAvg'}, inplace=True)
-    train = pd.concat([train, temp])
-    # train.rename(index={train.index[-1]:'TotalNNAvg'}, inplace=True)
-    temp = test.loc[test.index.str.contains("Pre2020NNavg")]*20
-    temp2 = test.loc[test.index.str.contains("TransNNavg")]*16
-    temp3 = test.loc[test.index.str.contains("Post2020NNavg")]*16
-    for i in range(len(temp2.columns)):
-        temp.iloc[0,i] = temp.iloc[0,i] + temp2.iloc[0,i] + temp3.iloc[0,i]
-    temp = temp/52
-    # Rename the index of temp to TotalNNAvg
-    temp.rename(index={temp.index[0]:'TotalNNAvg'}, inplace=True)
-    test = pd.concat([test, temp])
-    # test.rename(index={test.index[-1]:'TotalNNAvg'}, inplace=True)
-    # Repeat the above steps for the RNN model
-    temp = train.loc[train.index.str.contains("Pre2020RNNavg")]*20
-    temp2 = train.loc[train.index.str.contains("TransRNNavg")]*16
-    temp3 = train.loc[train.index.str.contains("Post2020RNNavg")]*16
-    for i in range(len(temp2.columns)):
-        temp.iloc[0,i] = temp.iloc[0,i] + temp2.iloc[0,i] + temp3.iloc[0,i]
-    temp = temp/52
-    # Rename the index of temp to TotalRNNAvg
-    temp.rename(index={temp.index[0]:'TotalRNNAvg'}, inplace=True)
-    train = pd.concat([train, temp])
-    # train.rename(index={train.index[-1]:'TotalRNNAvg'}, inplace=True)
-    temp = test.loc[test.index.str.contains("Pre2020RNNavg")]*20
-    temp2 = test.loc[test.index.str.contains("TransRNNavg")]*16
-    temp3 = test.loc[test.index.str.contains("Post2020RNNavg")]*16
-    for i in range(len(temp2.columns)):
-        temp.iloc[0,i] = temp.iloc[0,i] + temp2.iloc[0,i] + temp3.iloc[0,i]
-    temp = temp/52
-    # Rename the index of temp to TotalRNNAvg
-    temp.rename(index={temp.index[0]:'TotalRNNAvg'}, inplace=True)
-    test = pd.concat([test, temp])
-    # test.rename(index={test.index[-1]:'TotalRNNAvg'}, inplace=True)
-    # Repeat the above steps for the Ensemble model
-    temp = train.loc[train.index.str.contains("Pre2020Ensembleavg")]*20
-    temp2 = train.loc[train.index.str.contains("TransEnsembleavg")]*16
-    temp3 = train.loc[train.index.str.contains("Post2020Ensembleavg")]*16
-    for i in range(len(temp2.columns)):
-        temp.iloc[0,i] = temp.iloc[0,i] + temp2.iloc[0,i]
-    temp = temp/52
-    # Rename the index of temp to TotalEnsembleAvg
-    temp.rename(index={temp.index[0]:'TotalEnsembleAvg'}, inplace=True)
-    train = pd.concat([train, temp])
-    # train.rename(index={train.index[-1]:'TotalEnsembleAvg'}, inplace=True)
-    temp = test.loc[test.index.str.contains("Pre2020Ensembleavg")]*20
-    temp2 = test.loc[test.index.str.contains("TransEnsembleavg")]*16
-    temp3 = test.loc[test.index.str.contains("Post2020Ensembleavg")]*16
-    for i in range(len(temp2.columns)):
-        temp.iloc[0,i] = temp.iloc[0,i] + temp2.iloc[0,i]
-    temp = temp/52
-    # Rename the index of temp to TotalEnsembleAvg
-    temp.rename(index={temp.index[0]:'TotalEnsembleAvg'}, inplace=True)
-    test = pd.concat([test, temp])
-    # test.rename(index={test.index[-1]:'TotalEnsembleAvg'}, inplace=True)
+    
+    # START OF TOTAL AVERAGE CODE - Calculate weighted averages across all time periods
+    if 'LR' in models_to_train:
+        temp = train.loc[train.index.str.contains("Pre2020LRavg")]*20 
+        temp2 = train.loc[train.index.str.contains('TransLRavg')]*16
+        temp3 = train.loc[train.index.str.contains("Post2020LRavg")]*16
+        for i in range(len(temp2.columns)):
+            temp.iloc[0,i] = temp.iloc[0,i] + temp2.iloc[0,i] + temp3.iloc[0,i]
+        temp = temp/52
+        temp.rename(index={temp.index[0]:'TotalLRAvg'}, inplace=True)
+        train = pd.concat([train, temp])
+        temp = test.loc[test.index.str.contains("Pre2020LRavg")]*20
+        temp2 = test.loc[test.index.str.contains("TransLRavg")]*16
+        temp3 = test.loc[test.index.str.contains("Post2020LRavg")]*16
+        for i in range(len(temp2.columns)):
+            temp.iloc[0,i] = temp.iloc[0,i] + temp2.iloc[0,i] + temp3.iloc[0,i]
+        temp = temp/52
+        temp.rename(index={temp.index[0]:'TotalLRAvg'}, inplace=True)
+        test = pd.concat([test, temp])
+    
+    if 'RF' in models_to_train:
+        temp = train.loc[train.index.str.contains("Pre2020RFavg")]*20
+        temp2 = train.loc[train.index.str.contains("TransRFavg")]*16
+        temp3 = train.loc[train.index.str.contains("Post2020RFavg")]*16
+        for i in range(len(temp2.columns)):
+            temp.iloc[0,i] = temp.iloc[0,i] + temp2.iloc[0,i] + temp3.iloc[0,i]
+        temp = temp/52
+        temp.rename(index={temp.index[0]:'TotalRFAvg'}, inplace=True)
+        train = pd.concat([train, temp])
+        temp = test.loc[test.index.str.contains("Pre2020RFavg")]*20
+        temp2 = test.loc[test.index.str.contains("TransRFavg")]*16
+        temp3 = test.loc[test.index.str.contains("Post2020RFavg")]*16
+        for i in range(len(temp2.columns)):
+            temp.iloc[0,i] = temp.iloc[0,i] + temp2.iloc[0,i] + temp3.iloc[0,i]
+        temp = temp/52
+        temp.rename(index={temp.index[0]:'TotalRFAvg'}, inplace=True)
+        test = pd.concat([test, temp])
+    
+    if 'ARIMA' in models_to_train:
+        temp = train.loc[train.index.str.contains("Pre2020ARIMAavg")]*20
+        temp2 = train.loc[train.index.str.contains("TransARIMAavg")]*16
+        temp3 = train.loc[train.index.str.contains("Post2020ARIMAavg")]*16
+        for i in range(len(temp2.columns)):
+            temp.iloc[0,i] = temp.iloc[0,i] + temp2.iloc[0,i] + temp3.iloc[0,i]
+        temp = temp/52
+        temp.rename(index={temp.index[0]:'TotalARIMAAvg'}, inplace=True)
+        train = pd.concat([train, temp])
+        temp = test.loc[test.index.str.contains("Pre2020ARIMAavg")]*20
+        temp2 = test.loc[test.index.str.contains("TransARIMAavg")]*16
+        temp3 = test.loc[test.index.str.contains("Post2020ARIMAavg")]*16
+        for i in range(len(temp2.columns)):
+            temp.iloc[0,i] = temp.iloc[0,i] + temp2.iloc[0,i] + temp3.iloc[0,i]
+        temp = temp/52
+        temp.rename(index={temp.index[0]:'TotalARIMAAvg'}, inplace=True)
+        test = pd.concat([test, temp])
+    
+    if 'NN' in models_to_train:
+        temp = train.loc[train.index.str.contains("Pre2020NNavg")]*20
+        temp2 = train.loc[train.index.str.contains("TransNNavg")]*16
+        temp3 = train.loc[train.index.str.contains("Post2020NNavg")]*16
+        for i in range(len(temp2.columns)):
+            temp.iloc[0,i] = temp.iloc[0,i] + temp2.iloc[0,i] + temp3.iloc[0,i]
+        temp = temp/52
+        temp.rename(index={temp.index[0]:'TotalNNAvg'}, inplace=True)
+        train = pd.concat([train, temp])
+        temp = test.loc[test.index.str.contains("Pre2020NNavg")]*20
+        temp2 = test.loc[test.index.str.contains("TransNNavg")]*16
+        temp3 = test.loc[test.index.str.contains("Post2020NNavg")]*16
+        for i in range(len(temp2.columns)):
+            temp.iloc[0,i] = temp.iloc[0,i] + temp2.iloc[0,i] + temp3.iloc[0,i]
+        temp = temp/52
+        temp.rename(index={temp.index[0]:'TotalNNAvg'}, inplace=True)
+        test = pd.concat([test, temp])
+    
+    if 'RNN' in models_to_train:
+        temp = train.loc[train.index.str.contains("Pre2020RNNavg")]*20
+        temp2 = train.loc[train.index.str.contains("TransRNNavg")]*16
+        temp3 = train.loc[train.index.str.contains("Post2020RNNavg")]*16
+        for i in range(len(temp2.columns)):
+            temp.iloc[0,i] = temp.iloc[0,i] + temp2.iloc[0,i] + temp3.iloc[0,i]
+        temp = temp/52
+        temp.rename(index={temp.index[0]:'TotalRNNAvg'}, inplace=True)
+        train = pd.concat([train, temp])
+        temp = test.loc[test.index.str.contains("Pre2020RNNavg")]*20
+        temp2 = test.loc[test.index.str.contains("TransRNNavg")]*16
+        temp3 = test.loc[test.index.str.contains("Post2020RNNavg")]*16
+        for i in range(len(temp2.columns)):
+            temp.iloc[0,i] = temp.iloc[0,i] + temp2.iloc[0,i] + temp3.iloc[0,i]
+        temp = temp/52
+        temp.rename(index={temp.index[0]:'TotalRNNAvg'}, inplace=True)
+        test = pd.concat([test, temp])
+    
+    if 'Ensemble' in models_to_train:
+        temp = train.loc[train.index.str.contains("Pre2020Ensembleavg")]*20
+        temp2 = train.loc[train.index.str.contains("TransEnsembleavg")]*16
+        temp3 = train.loc[train.index.str.contains("Post2020Ensembleavg")]*16
+        for i in range(len(temp2.columns)):
+            temp.iloc[0,i] = temp.iloc[0,i] + temp2.iloc[0,i]
+        temp = temp/52
+        temp.rename(index={temp.index[0]:'TotalEnsembleAvg'}, inplace=True)
+        train = pd.concat([train, temp])
+        temp = test.loc[test.index.str.contains("Pre2020Ensembleavg")]*20
+        temp2 = test.loc[test.index.str.contains("TransEnsembleavg")]*16
+        temp3 = test.loc[test.index.str.contains("Post2020Ensembleavg")]*16
+        for i in range(len(temp2.columns)):
+            temp.iloc[0,i] = temp.iloc[0,i] + temp2.iloc[0,i]
+        temp = temp/52
+        temp.rename(index={temp.index[0]:'TotalEnsembleAvg'}, inplace=True)
+        test = pd.concat([test, temp])
+    
     # move the rows that contain "Avg" to the bottom
-    train = pd.concat([train[~train.index.str.contains("avg")],train[train.index.str.contains("avg")]])
-    test = pd.concat([test[~test.index.str.contains("avg")],test[test.index.str.contains("avg")]])
+    train = pd.concat([train[~train.index.str.contains("Avg")],train[train.index.str.contains("Avg")]])
+    test = pd.concat([test[~test.index.str.contains("Avg")],test[test.index.str.contains("Avg")]])
+    
+    # Generate filename based on models trained
+    if len(models_to_train) == 6:  # All models trained
+        filename_suffix = "AllModels"
+    else:
+        # Sort models alphabetically for consistent naming
+        model_names = sorted(list(models_to_train))
+        filename_suffix = "_".join(model_names)
+    
     # save the dataframes to excel files
-    train.to_excel("Metrics/InterpTrainMetricsEVERY4.xlsx")
-    test.to_excel("Metrics/InterpTestMetricsEVERY4.xlsx")
+    train_filename = f"Metrics/InterpTrainMetricsEVERY4_{filename_suffix}.xlsx"
+    test_filename = f"Metrics/InterpTestMetricsEVERY4_{filename_suffix}.xlsx"
+    train.to_excel(train_filename)
+    test.to_excel(test_filename)
+    print(f"Results saved to:")
+    print(f"  - {train_filename}")
+    print(f"  - {test_filename}")
     print("Program Done")
     # mainPlotting()
 
